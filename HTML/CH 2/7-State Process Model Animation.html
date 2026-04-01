@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>7-State Process Model Animation</title>
+    <style>
+        :root {
+            --running: #e74c3c;
+            --ready: #2ecc71;
+            --blocked: #f1c40f;
+            --suspended: #9b59b6;
+            --dark: #2c3e50;
+            --bg: #f4f7f6;
+        }
+
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { max-width: 900px; width: 100%; background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); }
+        
+        .controls { display: flex; gap: 10px; margin-bottom: 20px; justify-content: center; }
+        button { padding: 12px 24px; border-radius: 50px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .btn-step { background: var(--dark); color: white; }
+        .btn-lang { background: #fff; border: 2px solid var(--dark); color: var(--dark); }
+        button:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.15); }
+
+        /* 繪圖區域 */
+        .diagram { position: relative; height: 350px; background: #fff; border: 2px solid #eee; border-radius: 15px; margin: 20px 0; display: flex; justify-content: space-around; align-items: center; overflow: hidden; }
+        .divider { position: absolute; left: 50%; top: 10%; bottom: 10%; width: 2px; background: repeating-linear-gradient(to bottom, #ccc, #ccc 10px, transparent 10px, transparent 20px); }
+        .label { position: absolute; top: 10px; font-weight: bold; color: #bbb; text-transform: uppercase; }
+        
+        .node { width: 90px; height: 90px; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; font-size: 0.75rem; font-weight: bold; color: white; opacity: 0.2; transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); filter: grayscale(1); border: 4px solid transparent; }
+        .node.active { opacity: 1; filter: grayscale(0); transform: scale(1.2); border-color: #333; box-shadow: 0 0 25px rgba(0,0,0,0.2); z-index: 10; }
+
+        .n-ready { background: var(--ready); }
+        .n-run { background: var(--running); }
+        .n-block { background: var(--blocked); color: #333; }
+        .n-susp { background: var(--suspended); }
+
+        .info-box { background: #fff; padding: 20px; border-radius: 12px; border-left: 6px solid var(--dark); min-height: 100px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); font-size: 1.1rem; line-height: 1.6; width: 100%; box-sizing: border-box; }
+
+        /* 語系切換 CSS */
+        .en { display: none; }
+        .active-en .en { display: block; }
+        .active-en .zh { display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="container" id="app">
+        <div class="controls">
+            <button class="btn-step" onclick="nextStep()">STEP BY STEP / 下一步</button>
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文 切換</button>
+        </div>
+
+        <div class="diagram">
+            <div class="label" style="left: 15%;">Main Memory (主記憶體)</div>
+            <div class="label" style="right: 15%;">Secondary (輔助記憶體)</div>
+            <div class="divider"></div>
+
+            <div id="ready" class="node n-ready">READY<br>就緒</div>
+            <div id="run" class="node n-run active">RUNNING<br>執行</div>
+            <div id="block" class="node n-block">BLOCKED<br>阻塞</div>
+
+            <div id="bsusp" class="node n-susp">BLOCKED<br>SUSP</div>
+            <div id="rsusp" class="node n-susp">READY<br>SUSP</div>
+        </div>
+
+        <div class="info-box" id="info">
+            <div class="zh">行程目前在 CPU 上正常【執行】中。</div>
+            <div class="en">The process is currently [RUNNING] on the CPU.</div>
+        </div>
+    </div>
+
+    <script>
+        let currentStep = 0;
+        const scenario = [
+            { id: 'run', zh: '1. 行程正在執行 I/O 運算。', en: '1. The process is executing an I/O operation.' },
+            { id: 'block', zh: '2. 進入【阻塞】狀態：行程需等待 I/O 完成，暫時移出 CPU。', en: '2. Entering [Blocked]: Process waits for I/O and leaves CPU.' },
+            { id: 'bsusp', zh: '3. 進入【阻塞掛起】：因多工程度過高，行程被移至輔助記憶體（Swap-out）。', en: '3. Entering [Blocked Suspended]: Swapped out to disk due to high memory pressure.' },
+            { id: 'rsusp', zh: '4. 進入【就緒掛起】：關鍵點！I/O 完成了，但行程人還在磁碟中。', en: '4. Entering [Ready Suspended]: Crucial! I/O completes while on disk.' },
+            { id: 'ready', zh: '5. 進入【就緒】：記憶體有空間了，行程被重新搬回主記憶體（Swap-in）。', en: '5. Entering [Ready]: Memory space cleared, process swapped back to RAM.' },
+            { id: 'run', zh: '6. 重新執行：排程器選中行程，行程回到【執行】狀態。', en: '6. Resuming: Scheduler selects the process, returns to [Running].' }
+        ];
+
+        function nextStep() {
+            currentStep = (currentStep + 1) % scenario.length;
+            const data = scenario[currentStep];
+
+            // 更新節點燈號
+            document.querySelectorAll('.node').forEach(n => n.classList.remove('active'));
+            document.getElementById(data.id).classList.add('active');
+
+            // 更新文字說明
+            document.getElementById('info').innerHTML = `
+                <div class="zh">${data.zh}</div>
+                <div class="en">${data.en}</div>
+            `;
+        }
+
+        function toggleLang() {
+            document.body.classList.toggle('active-en');
+        }
+    </script>
+</body>
+</html>

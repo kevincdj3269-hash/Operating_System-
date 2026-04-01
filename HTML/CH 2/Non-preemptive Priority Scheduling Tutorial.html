@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Non-preemptive Priority Scheduling Tutorial</title>
+    <style>
+        :root {
+            --high: #e74c3c;
+            --med: #f1c40f;
+            --low: #3498db;
+            --dark: #2c3e50;
+            --bg: #f8f9fa;
+        }
+
+        body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { max-width: 900px; width: 100%; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        
+        .lang-btn { float: right; background: var(--dark); color: white; border: none; padding: 10px 20px; border-radius: 25px; cursor: pointer; transition: 0.3s; font-weight: bold; }
+        .lang-btn:hover { background: var(--high); }
+
+        h2 { border-left: 6px solid var(--high); padding-left: 15px; margin-top: 30px; }
+
+        /* 甘特圖動畫 */
+        .gantt-chart { display: flex; height: 60px; background: #eee; border-radius: 8px; overflow: hidden; margin: 20px 0; border: 1px solid #ddd; }
+        .proc { display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; animation: grow 1.5s ease-out forwards; opacity: 0; }
+        
+        @keyframes grow { from { width: 0; opacity: 0; } to { opacity: 1; } }
+
+        /* P1(BT:5, Pri:3, AT:0), P2(BT:3, Pri:1, AT:1), P3(BT:2, Pri:2, AT:2) */
+        /* 執行順序: P1(0-5) -> P2(5-8) -> P3(8-10) */
+        .p1 { background: var(--low); width: 50%; animation-delay: 0.2s; } 
+        .p2 { background: var(--high); width: 30%; animation-delay: 1.2s; } 
+        .p3 { background: var(--med); width: 20%; animation-delay: 2.2s; }
+
+        .time-scale { display: flex; justify-content: space-between; font-weight: bold; font-family: monospace; color: #555; }
+
+        /* 內容切換 */
+        .en { display: none; }
+        .active-en .en { display: block; }
+        .active-en .zh { display: none; }
+
+        .calc-card { background: #fff5f5; padding: 20px; border-radius: 10px; border: 1px solid #feb2b2; margin: 20px 0; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
+        .card { padding: 15px; border-radius: 8px; border-top: 4px solid; }
+        .pros { background: #e6fffa; border-color: #38b2ac; }
+        .cons { background: #fff5f5; border-color: #e53e3e; }
+    </style>
+</head>
+<body>
+
+    <div class="container" id="main">
+        <button class="lang-btn" onclick="toggleLang()">Switch to English</button>
+
+        <div class="zh">
+            <h1>優先權排程 (不可搶先式)</h1>
+            <p><strong>定義：</strong> 每個程序都有一個優先權等級（通常數字越小優先權越高）。CPU 總是選擇就緒佇列中最高優先權的程序執行，且一旦開始就不會被中斷。</p>
+
+            <table>
+                <tr><th>程序</th><th>到達時間(AT)</th><th>執行時間(BT)</th><th>優先權(Pri)</th></tr>
+                <tr><td>P1</td><td>0ms</td><td>5ms</td><td>3 (低)</td></tr>
+                <tr><td>P2</td><td>1ms</td><td>3ms</td><td>1 (高)</td></tr>
+                <tr><td>P3</td><td>2ms</td><td>2ms</td><td>2 (中)</td></tr>
+            </table>
+
+            <div class="gantt-chart">
+                <div class="proc p1">P1</div>
+                <div class="proc p2">P2</div>
+                <div class="proc p3">P3</div>
+            </div>
+            <div class="time-scale"><span>0ms</span><span>5ms</span><span>8ms</span><span>10ms</span></div>
+
+            <div class="calc-card">
+                <strong>💡 Step-by-Step 計算說明：</strong><br>
+                1. <strong>0ms:</strong> 只有 P1 到達，直接開始執行。<br>
+                2. <strong>1~2ms:</strong> P2, P3 雖然優先權更高，但 P1 是不可搶先的，必須等到 5ms。<br>
+                3. <strong>5ms:</strong> P1 結束。比較 P2(Pri:1) 與 P3(Pri:2)，選擇 <span style="color:red">P2</span> 先做。<br>
+                4. <strong>8ms:</strong> P2 結束，換 P3 執行到 10ms。
+                <hr>
+                <strong>平均等待時間 (Avg WT):</strong> [(5-5-0) + (5-1) + (8-2)] / 3 = <strong>3.33ms</strong>
+            </div>
+
+            <div class="grid">
+                <div class="card pros">
+                    <strong>✅ 優點</strong>
+                    <ul>
+                        <li>符合現實需求（如 VIP 優先）。</li>
+                        <li>比搶先式更穩定，減少切換開銷。</li>
+                    </ul>
+                </div>
+                <div class="card cons">
+                    <strong>❌ 缺點</strong>
+                    <ul>
+                        <li><strong>飢餓現象 (Starvation)</strong>：低優先權程序可能永遠等不到 CPU。</li>
+                        <li>解決方案：<strong>老化技術 (Aging)</strong>，隨時間增加等待程序的優先權。</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="en">
+            <h1>Priority Scheduling (Non-preemptive)</h1>
+            <p><strong>Definition:</strong> CPU is allocated to the process with the highest priority. In non-preemptive mode, the running process cannot be interrupted.</p>
+
+            <div class="gantt-chart">
+                <div class="proc p1">P1</div>
+                <div class="proc p2">P2</div>
+                <div class="proc p3">P3</div>
+            </div>
+            <div class="time-scale"><span>0ms</span><span>5ms</span><span>8ms</span><span>10ms</span></div>
+
+            <div class="calc-card">
+                <strong>💡 Calculation Logic:</strong><br>
+                - P1 finishes at 5ms. (TAT: 5-0=5, WT: 0)<br>
+                - P2 finishes at 8ms. (TAT: 8-1=7, WT: 4)<br>
+                - P3 finishes at 10ms. (TAT: 10-2=8, WT: 6)<br>
+                <strong>Avg TAT:</strong> 6.67ms | <strong>Avg WT:</strong> 3.33ms
+            </div>
+
+            <div class="grid">
+                <div class="card pros"><strong>✅ Pros:</strong> Honors critical tasks; lower overhead than preemptive.</div>
+                <div class="card cons"><strong>❌ Cons:</strong> <strong>Starvation</strong> for low-priority tasks. Use <strong>Aging</strong> to fix.</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleLang() {
+            const body = document.body;
+            body.classList.toggle('active-en');
+            document.querySelector('.lang-btn').innerText = 
+                body.classList.contains('active-en') ? "切換至中文" : "Switch to English";
+            
+            // Re-trigger Animation
+            const procs = document.querySelectorAll('.proc');
+            procs.forEach(p => { p.style.animation = 'none'; p.offsetHeight; p.style.animation = ''; });
+        }
+    </script>
+</body>
+</html>

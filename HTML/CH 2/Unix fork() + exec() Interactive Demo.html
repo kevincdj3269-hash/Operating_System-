@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unix fork() + exec() Interactive Demo</title>
+    <style>
+        :root {
+            --shell-clr: #34495e;  /* 深藍灰 - Shell */
+            --ls-clr: #27ae60;     /* 綠色 - ls 程式 */
+            --dark: #2c3e50;
+            --bg: #f4f7f6;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background-color: var(--bg);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+
+        .container {
+            max-width: 900px;
+            width: 100%;
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            border-radius: 50px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.3s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .btn-step { background: var(--dark); color: white; }
+        .btn-lang { background: #fff; border: 2px solid var(--dark); color: var(--dark); }
+        button:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.15); }
+        button:disabled { background: #bdc3c7; cursor: not-allowed; transform: none; box-shadow: none;}
+
+        /* 演譯區域 */
+        .stage {
+            position: relative;
+            height: 350px;
+            background: #fff;
+            border: 2px solid #eee;
+            border-radius: 15px;
+            margin: 20px 0;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* 行程通用樣式 */
+        .process {
+            width: 140px;
+            height: 140px;
+            border-radius: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            position: absolute;
+            transition: all 0.8s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        /* 父行程 - Shell */
+        #parent {
+            background-color: var(--shell-clr);
+            left: calc(50% - 70px);
+            z-index: 10;
+        }
+
+        /* 子行程 - 初始是 Shell 副本 */
+        #child {
+            background-color: var(--shell-clr);
+            opacity: 0;
+            transform: scale(0.5);
+            left: calc(50% - 70px);
+            z-index: 5;
+        }
+
+        .pid-tag { font-size: 0.8rem; margin-top: 5px; opacity: 0.9; font-family: monospace; }
+        .task-tag { font-size: 0.9rem; margin-top: 10px; font-weight: normal; font-style: italic;}
+
+        /* 說明框 */
+        .info-box {
+            background: #eef2f7;
+            padding: 20px;
+            border-radius: 12px;
+            border-left: 6px solid var(--dark);
+            min-height: 110px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+            font-size: 1.1rem;
+            line-height: 1.6;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        /* 語言切換 CSS */
+        .en { display: none; }
+        .active-en .en { display: block; }
+        .active-en .zh { display: none; }
+
+        /* 特殊動畫效果 Class */
+        .executing {
+            animation: flashAndTransform 0.8s ease-out forwards;
+        }
+
+        @keyframes flashAndTransform {
+            0% { background-color: var(--shell-clr); transform: translate(160px, 0) scale(1); box-shadow: 0 0 0px rgba(255,255,255,0); }
+            50% { background-color: #fff; transform: translate(160px, 0) scale(1.1); box-shadow: 0 0 30px rgba(39, 174, 96, 0.7); }
+            100% { background-color: var(--ls-clr); transform: translate(160px, 0) scale(1); box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="zh"><h1>實作討論：子行程如何利用 exec() 執行新程式</h1></div>
+    <div class="en"><h1>Lab: How Child Process uses exec() to Run New Program</h1></div>
+
+    <div class="container" id="app">
+        <div class="controls">
+            <button class="btn-step" id="stepBtn" onclick="nextStep()">STEP BY STEP / 下一步</button>
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文 切換</button>
+        </div>
+
+        <div class="stage">
+            <div id="parent" class="process">
+                <span>PARENT (Shell)</span>
+                <span class="pid-tag">PID: 500</span>
+                <span class="task-tag zh">等待命令...</span>
+                <span class="task-tag en">Waiting...</span>
+            </div>
+            <div id="child" class="process">
+                <span id="c-name">CHILD (Shell)</span>
+                <span class="pid-tag">PID: 501</span>
+                <span class="task-tag zh" id="c-task">剛剛出生</span>
+                <span class="task-tag en" id="c-task-en">Just born</span>
+            </div>
+        </div>
+
+        <div class="info-box" id="info">
+            <div class="zh">初始狀態：一個 Shell 行程 (PID 500) 正在運行，等待使用者輸入。</div>
+            <div class="en">Initial State: A Shell process (PID 500) is running, waiting for input.</div>
+        </div>
+    </div>
+
+    <script>
+        let step = 0;
+        const parent = document.getElementById('parent');
+        const child = document.getElementById('child');
+        const cName = document.getElementById('c-name');
+        const cTaskZH = document.getElementById('c-task');
+        const cTaskEN = document.getElementById('c-task-en');
+        const stepBtn = document.getElementById('stepBtn');
+
+        // 定義演譯場景資料
+        const scenario = [
+            { 
+                zh: '1. 使用者輸入 `ls`：Shell 呼叫 `fork()`。核心建立一個與父行程（Shell）幾乎完全相同的子行程副本（PID 501）。', 
+                en: '1. User enters `ls`: Shell calls `fork()`. Kernel creates a child (PID 501), an almost identical copy of Shell.' 
+            },
+            { 
+                zh: '2. 子行程準備變身：父子行程分裂。子行程 PID 501 準備呼叫 `exec("/bin/ls")`。注意：此時它還是 Shell 的樣子。', 
+                en: '2. Preparing for exec(): Parent and Child separate. Child (501) prepares to call `exec("/bin/ls")`. Note: It\'s still a Shell copy.' 
+            },
+            { 
+                zh: '3. 執行 exec() (奪舍)：核心載入 `ls` 程式碼，<span style="color:red;font-weight:bold;">徹底覆蓋</span>子行程的記憶體空間。子行程變成全新的 `ls` 程式。', 
+                en: '3. Executing exec(): Kernel loads `ls` binary, <span style="color:red;font-weight:bold;">completely overwriting</span> child\'s memory. Child is now a pure `ls` program.' 
+            },
+            { 
+                zh: '4. ls 執行並結束：`ls` 列出檔案後結束。父行程（Shell）呼叫 `wait()` 收屍，然後重新回到等待命令狀態。', 
+                en: '4. ls Runs & Exits: `ls` lists files and exits. Parent (Shell) calls `wait()` to cleanup, then returns to waiting for next command.' 
+            }
+        ];
+
+        function nextStep() {
+            step = (step + 1) % 6;
+            
+            if (step === 0) {
+                // 重置
+                parent.style.transform = 'translateX(0)';
+                child.style.opacity = '0';
+                child.style.transform = 'scale(0.5)';
+                child.classList.remove('executing');
+                cName.innerText = "CHILD (Shell)";
+                cTaskZH.innerText = "剛剛出生";
+                cTaskEN.innerText = "Just born";
+                child.style.backgroundColor = "var(--shell-clr)";
+                stepBtn.disabled = false;
+                updateInfo("重置演譯。", "Resetting demo.");
+            } else if (step === 1) {
+                // Fork呼叫
+                updateInfo(scenario[0].zh, scenario[0].en);
+            } else if (step === 2) {
+                // 分裂
+                child.style.opacity = '1';
+                child.style.transform = 'translate(160px, 0) scale(1)';
+                parent.style.transform = 'translateX(-160px)';
+                cTaskZH.innerText = "準備執行 exec()...";
+                cTaskEN.innerText = "Ready for exec()...";
+                updateInfo(scenario[1].zh, scenario[1].en);
+            } else if (step === 3) {
+                // exec() 動畫與狀態改變
+                child.classList.add('executing');
+                // 在動畫中途改變文字
+                setTimeout(() => {
+                    cName.innerText = "CHILD (ls)";
+                    cTaskZH.innerText = "列出檔案中...";
+                    cTaskEN.innerText = "Listing files...";
+                }, 400);
+                updateInfo(scenario[2].zh, scenario[2].en);
+            } else if (step === 4) {
+                // ls 結束，父行程收屍
+                child.style.opacity = '0';
+                child.style.transform = 'translate(160px, -100px) scale(0.2)';
+                parent.style.transform = 'translateX(0)';
+                updateInfo(scenario[3].zh, scenario[3].en);
+            } else if (step === 5) {
+                // 回到初始狀態
+                updateInfo("演譯結束。點擊下一步重新開始。", "Demo Ends. Click NEXT to restart.");
+            }
+        }
+
+        function updateInfo(zh, en) {
+            document.getElementById('info').innerHTML = `
+                <div class="zh">${zh}</div>
+                <div class="en">${en}</div>
+            `;
+        }
+
+        function toggleLang() {
+            document.body.classList.toggle('active-en');
+        }
+    </script>
+</body>
+</html>

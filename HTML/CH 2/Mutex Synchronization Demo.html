@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Mutex Synchronization Demo</title>
+    <style>
+        :root {
+            --t1-clr: #3498db;
+            --t2-clr: #e67e22;
+            --locked: #e74c3c;
+            --unlocked: #2ecc71;
+            --dark: #2c3e50;
+            --bg: #f8f9fa;
+        }
+
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { max-width: 900px; width: 100%; background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); }
+        
+        .controls { display: flex; justify-content: center; gap: 15px; margin-bottom: 25px; }
+        button { padding: 12px 24px; border-radius: 50px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .btn-step { background: var(--dark); color: white; }
+        .btn-lang { background: #fff; border: 2px solid var(--dark); color: var(--dark); }
+        button:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.15); }
+
+        /* 繪圖區域 */
+        .stage { position: relative; height: 350px; background: #fff; border: 2px solid #eee; border-radius: 15px; margin: 20px 0; overflow: hidden; display: flex; justify-content: space-around; align-items: center; }
+
+        .resource-box { width: 150px; height: 150px; border: 4px solid var(--unlocked); border-radius: 15px; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: 0.5s; }
+        .resource-box.locked { border-color: var(--locked); background: #fff5f5; }
+        .lock-icon { font-size: 2rem; margin-bottom: 10px; }
+
+        .thread-ball { width: 60px; height: 60px; border-radius: 50%; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.8rem; position: absolute; transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1); z-index: 10; }
+        #t1 { background: var(--t1-clr); left: 50px; top: 145px; }
+        #t2 { background: var(--t2-clr); right: 50px; top: 145px; }
+
+        .info-box { background: #fff; padding: 20px; border-radius: 12px; border-left: 6px solid var(--dark); min-height: 100px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); line-height: 1.6; width: 100%; box-sizing: border-box; }
+        
+        .en { display: none; }
+        .active-en .en { display: block; }
+        .active-en .zh { display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="container" id="app">
+        <div class="controls">
+            <button class="btn-step" onclick="nextStep()">STEP BY STEP / 下一步</button>
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文 切換</button>
+        </div>
+
+        <div class="stage">
+            <div id="t1" class="thread-ball">Thread A</div>
+            <div id="res" class="resource-box">
+                <div id="lock-status" class="lock-icon">🔓</div>
+                <div style="font-size: 0.8rem; color: #777;">SHARED DATA</div>
+            </div>
+            <div id="t2" class="thread-ball">Thread B</div>
+        </div>
+
+        <div class="info-box" id="info">
+            <div class="zh">初始狀態：互斥鎖 (Mutex) 為解鎖狀態，資源目前可用。</div>
+            <div class="en">Initial: Mutex is Unlocked. Shared resource is available.</div>
+        </div>
+    </div>
+
+    <script>
+        let step = 0;
+        const t1 = document.getElementById('t1');
+        const t2 = document.getElementById('t2');
+        const res = document.getElementById('res');
+        const lockIcon = document.getElementById('lock-status');
+        const info = document.getElementById('info');
+
+        const scenario = [
+            { 
+                zh: "1. 執行緒 A 請求鎖：A 呼叫 mutex.lock() 並成功獲取，進入臨界區。", 
+                en: "1. A requests lock: Thread A calls mutex.lock(), gains access to critical section.",
+                t1Pos: {left: 'calc(50% - 30px)', top: '145px'}, t2Pos: {right: '50px', top: '145px'}, locked: true
+            },
+            { 
+                zh: "2. 執行緒 B 請求鎖：B 嘗試進入，但發現 Mutex 已上鎖，被迫在門外等待（Blocked）。", 
+                en: "2. B requests lock: Thread B tries to enter but finds Mutex locked, forced to wait.",
+                t1Pos: {left: 'calc(50% - 30px)', top: '145px'}, t2Pos: {right: '180px', top: '145px'}, locked: true
+            },
+            { 
+                zh: "3. 執行緒 A 釋放鎖：A 完成工作，呼叫 mutex.unlock()。系統喚醒等待中的 B。", 
+                en: "3. A releases lock: Thread A calls mutex.unlock(). OS wakes up waiting Thread B.",
+                t1Pos: {left: '50px', top: '50px'}, t2Pos: {right: '180px', top: '145px'}, locked: false
+            },
+            { 
+                zh: "4. 執行緒 B 獲取鎖：B 成功上鎖並進入臨界區進行資料修改。", 
+                en: "4. B gains lock: Thread B locks the mutex and enters critical section.",
+                t1Pos: {left: '50px', top: '50px'}, t2Pos: {right: 'calc(50% - 30px)', top: '145px'}, locked: true
+            },
+            { 
+                zh: "重置演譯。", en: "Resetting demo.",
+                t1Pos: {left: '50px', top: '145px'}, t2Pos: {right: '50px', top: '145px'}, locked: false
+            }
+        ];
+
+        function nextStep() {
+            const data = scenario[step];
+            t1.style.left = data.t1Pos.left || '';
+            t1.style.top = data.t1Pos.top || '';
+            t2.style.right = data.t2Pos.right || '';
+            t2.style.top = data.t2Pos.top || '';
+
+            if(data.locked) {
+                res.classList.add('locked');
+                lockIcon.innerText = '🔒';
+            } else {
+                res.classList.remove('locked');
+                lockIcon.innerText = '🔓';
+            }
+
+            info.innerHTML = `<div class="zh">${data.zh}</div><div class="en">${data.en}</div>`;
+            step = (step + 1) % scenario.length;
+        }
+
+        function toggleLang() { document.body.classList.toggle('active-en'); }
+    </script>
+</body>
+</html>

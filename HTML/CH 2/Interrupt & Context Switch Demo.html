@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interrupt & Context Switch Demo</title>
+    <style>
+        :root {
+            --p1-clr: #3498db;
+            --p2-clr: #e67e22;
+            --os-clr: #2c3e50;
+            --int-clr: #e74c3c;
+            --bg: #f4f7f6;
+        }
+
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { max-width: 900px; width: 100%; background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); }
+        
+        .controls { display: flex; justify-content: center; gap: 15px; margin-bottom: 30px; }
+        button { padding: 12px 24px; border-radius: 50px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .btn-step { background: var(--os-clr); color: white; }
+        .btn-lang { background: #fff; border: 2px solid var(--os-clr); color: var(--os-clr); }
+        button:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.15); }
+
+        /* 演譯區域 */
+        .stage { position: relative; height: 400px; background: #fff; border: 2px solid #eee; border-radius: 15px; margin: 20px 0; overflow: hidden; display: flex; justify-content: space-around; align-items: center; }
+
+        .pcb { width: 120px; height: 150px; border: 3px solid #ccc; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: bold; }
+        #pcb-a { border-color: var(--p1-clr); color: var(--p1-clr); }
+        #pcb-b { border-color: var(--p2-clr); color: var(--p2-clr); }
+
+        .cpu-box { width: 150px; height: 150px; border: 4px solid var(--os-clr); border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; transition: 0.5s; }
+        .cpu-label { font-weight: bold; margin-bottom: 5px; }
+        .mode-tag { font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; background: #eee; }
+
+        /* 中斷訊號閃爍 */
+        .interrupt-signal {
+            position: absolute; top: -50px; width: 40px; height: 40px; background: var(--int-clr); 
+            clip-path: polygon(50% 0%, 0% 100%, 100% 100%); opacity: 0; transition: 0.3s;
+        }
+        .active-int { opacity: 1; transform: translateY(60px); animation: shake 0.2s infinite; }
+
+        @keyframes shake { 0% {left:48%;} 50% {left:52%;} 100% {left:48%;} }
+
+        /* 說明框 */
+        .info-box { background: #fff; padding: 20px; border-radius: 12px; border-left: 6px solid var(--os-clr); min-height: 100px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); font-size: 1.1rem; line-height: 1.6; }
+        
+        .en { display: none; }
+        .active-en .en { display: block; }
+        .active-en .zh { display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="container" id="app">
+        <div class="controls">
+            <button class="btn-step" onclick="nextStep()">STEP BY STEP / 下一步</button>
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文 切換</button>
+        </div>
+
+        <div class="stage">
+            <div id="pcb-a" class="pcb">PCB A</div>
+            
+            <div class="cpu-box" id="cpu">
+                <div id="int-ui" class="interrupt-signal"></div>
+                <div class="cpu-label">CPU</div>
+                <div id="cpu-task" style="font-weight: bold; color: var(--p1-clr);">User: Proc A</div>
+                <div id="cpu-mode" class="mode-tag">User Mode</div>
+            </div>
+
+            <div id="pcb-b" class="pcb">PCB B</div>
+        </div>
+
+        <div class="info-box" id="info">
+            <div class="zh">初始狀態：CPU 正在執行行程 A（使用者模式）。作業系統目前沒有控制權。</div>
+            <div class="en">Initial: CPU is running Process A (User Mode). OS has no control.</div>
+        </div>
+    </div>
+
+    <script>
+        let step = 0;
+        const cpuTask = document.getElementById('cpu-task');
+        const cpuMode = document.getElementById('cpu-mode');
+        const cpuBox = document.getElementById('cpu');
+        const intUI = document.getElementById('int-ui');
+        const info = document.getElementById('info');
+
+        const scenario = [
+            { 
+                zh: "1. 發生中斷：硬體發出訊號。CPU 停止 A，跳轉到核心模式並將控制權交給 OS。", 
+                en: "1. Interrupt: Hardware signal. CPU stops A, switches to Kernel Mode and gives control to OS.",
+                task: "OS (Handling)", mode: "Kernel Mode", int: true, clr: "var(--os-clr)"
+            },
+            { 
+                zh: "2. 儲存內文：OS 將 CPU 目前的暫存器與狀態存入行程 A 的 PCB 中。", 
+                en: "2. Save Context: OS saves current registers and status into PCB A.",
+                task: "OS (Saving A)", mode: "Kernel Mode", int: false, clr: "var(--os-clr)"
+            },
+            { 
+                zh: "3. 載入內文：OS 根據排程決定換人，從 PCB B 載入先前存下的狀態。", 
+                en: "3. Load Context: OS decides to switch, reloads status from PCB B.",
+                task: "OS (Loading B)", mode: "Kernel Mode", int: false, clr: "var(--os-clr)"
+            },
+            { 
+                zh: "4. 恢復執行：OS 退出核心模式。CPU 開始執行行程 B（使用者模式）。", 
+                en: "4. Resume: OS exits Kernel Mode. CPU starts running Process B (User Mode).",
+                task: "User: Proc B", mode: "User Mode", int: false, clr: "var(--p2-clr)"
+            },
+            { 
+                zh: "重置演譯。", en: "Resetting demo.",
+                task: "User: Proc A", mode: "User Mode", int: false, clr: "var(--p1-clr)"
+            }
+        ];
+
+        function nextStep() {
+            const current = scenario[step];
+            cpuTask.innerText = current.task;
+            cpuTask.style.color = current.clr;
+            cpuMode.innerText = current.mode;
+            
+            if(current.int) intUI.classList.add('active-int');
+            else intUI.classList.remove('active-int');
+
+            info.innerHTML = `<div class="zh">${current.zh}</div><div class="en">${current.en}</div>`;
+            step = (step + 1) % scenario.length;
+        }
+
+        function toggleLang() { document.body.classList.toggle('active-en'); }
+    </script>
+</body>
+</html>

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Long-term Scheduler Demo</title>
+    <style>
+        :root {
+            --disk-clr: #7f8c8d;
+            --ram-clr: #2980b9;
+            --job-clr: #f1c40f;
+            --dark: #2c3e50;
+            --bg: #f4f7f6;
+        }
+
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { max-width: 900px; width: 100%; background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); }
+        
+        .controls { display: flex; justify-content: center; gap: 15px; margin-bottom: 30px; }
+        button { padding: 12px 24px; border-radius: 50px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .btn-step { background: var(--dark); color: white; }
+        .btn-lang { background: #fff; border: 2px solid var(--dark); color: var(--dark); }
+        button:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.15); }
+
+        /* 演譯區域 */
+        .stage { position: relative; height: 350px; background: #fff; border: 2px solid #eee; border-radius: 15px; margin: 20px 0; display: flex; justify-content: space-around; align-items: center; }
+
+        .storage-box { width: 220px; height: 250px; border: 3px solid #ddd; border-radius: 15px; position: relative; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 10px; padding: 15px; }
+        .box-label { position: absolute; top: -12px; left: 20px; background: white; padding: 0 10px; font-weight: bold; font-size: 0.85rem; color: #7f8c8d; }
+        
+        #disk { border-color: var(--disk-clr); }
+        #ram { border-color: var(--ram-clr); }
+
+        /* 工作塊樣式 */
+        .job-block {
+            width: 45px; height: 45px; border-radius: 8px; background: var(--job-clr);
+            display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.7rem;
+            transition: all 0.8s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        /* 說明框 */
+        .info-box { background: #eef2f7; padding: 20px; border-radius: 12px; border-left: 6px solid var(--ram-clr); min-height: 100px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); font-size: 1.1rem; line-height: 1.6; width: 100%; box-sizing: border-box; }
+
+        .en { display: none; }
+        .active-en .en { display: block; }
+        .active-en .zh { display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="container" id="app">
+        <div class="controls">
+            <button class="btn-step" onclick="nextStep()">STEP BY STEP / 下一步</button>
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文 切換</button>
+        </div>
+
+        <div class="stage">
+            <div id="disk" class="storage-box">
+                <div class="box-label zh">磁碟 (工作池)</div>
+                <div class="box-label en">Disk (Job Pool)</div>
+                <div id="j1" class="job-block">Job 1</div>
+                <div id="j2" class="job-block">Job 2</div>
+                <div id="j3" class="job-block">Job 3</div>
+                <div id="j4" class="job-block">Job 4</div>
+            </div>
+
+            <div style="font-size: 2rem; color: #ccc;">➔</div>
+
+            <div id="ram" class="storage-box">
+                <div class="box-label zh">記憶體 (就緒佇列)</div>
+                <div class="box-label en">RAM (Ready Queue)</div>
+            </div>
+        </div>
+
+        <div class="info-box" id="info">
+            <div class="zh">初始狀態：多個工作在磁碟中等待被排程。</div>
+            <div class="en">Initial: Multiple jobs waiting in the disk to be scheduled.</div>
+        </div>
+    </div>
+
+    <script>
+        let step = 0;
+        const info = document.getElementById('info');
+        const ram = document.getElementById('ram');
+        const disk = document.getElementById('disk');
+
+        const scenario = [
+            { id: 'j1', zh: "1. 長期排程：挑選 Job 1，將其載入記憶體。此時 Job 1 正式成為一個『行程』。", en: "1. Long-term Scheduling: Select Job 1 and load it into RAM. Job 1 now becomes a 'Process'." },
+            { id: 'j3', zh: "2. 行程組合：排程器避開運算型的 Job 2，改挑選 I/O 型的 Job 3 以平衡系統負擔。", en: "2. Process Mix: Scheduler skips CPU-heavy Job 2, selecting I/O-bound Job 3 to balance system load." },
+            { id: 'j4', zh: "3. 限制多工程度：雖然還有工作，但長期排程器判斷記憶體已滿，停止載入新行程。", en: "3. Multiprogramming Limit: Scheduler decides RAM is full and stops loading more processes." },
+            { id: 'reset', zh: "重置演譯。", en: "Resetting demo." }
+        ];
+
+        function nextStep() {
+            const current = scenario[step];
+            
+            if (current.id === 'reset') {
+                location.reload(); // 簡單重置方式
+                return;
+            }
+
+            const targetJob = document.getElementById(current.id);
+            if (targetJob) {
+                ram.appendChild(targetJob);
+                targetJob.style.backgroundColor = "#3498db";
+                targetJob.style.color = "white";
+            }
+
+            info.innerHTML = `<div class="zh">${current.zh}</div><div class="en">${current.en}</div>`;
+            step = (step + 1) % scenario.length;
+        }
+
+        function toggleLang() { document.body.classList.toggle('active-en'); }
+    </script>
+</body>
+</html>

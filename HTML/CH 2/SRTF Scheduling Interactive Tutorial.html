@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SRTF Scheduling Interactive Tutorial</title>
+    <style>
+        :root {
+            --primary: #e67e22;
+            --p1-clr: #3498db;
+            --p2-clr: #2ecc71;
+            --p3-clr: #9b59b6;
+            --dark: #2c3e50;
+        }
+
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { max-width: 900px; width: 100%; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        
+        /* 語言切換按鈕 */
+        .lang-toggle { float: right; background: var(--dark); color: white; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; transition: 0.3s; }
+        .lang-toggle:hover { background: var(--primary); }
+
+        h2 { border-left: 5px solid var(--primary); padding-left: 15px; margin-top: 30px; }
+
+        /* 甘特圖動畫 */
+        .gantt-chart { display: flex; height: 50px; background: #eee; border-radius: 8px; overflow: hidden; margin: 20px 0; border: 1px solid #ddd; }
+        .block { display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 14px; animation: slideIn 1.5s ease-out forwards; opacity: 0; }
+        
+        @keyframes slideIn { from { width: 0; opacity: 0; } to { opacity: 1; } }
+
+        /* P1(8ms, AT:0), P2(4ms, AT:2), P3(2ms, AT:5) */
+        /* 0-2: P1 | 2-6: P2(搶佔) | 6-12: P1(剩餘) | 12-14: P3 */
+        .b1 { background: var(--p1-clr); width: 14.2%; animation-delay: 0.2s; } /* P1 first part */
+        .b2 { background: var(--p2-clr); width: 28.6%; animation-delay: 1.0s; } /* P2 full */
+        .b1-2 { background: var(--p1-clr); width: 42.9%; animation-delay: 2.0s; border-left: 1px solid rgba(255,255,255,0.3); } /* P1 remaining */
+        .b3 { background: var(--p3-clr); width: 14.3%; animation-delay: 3.0s; } /* P3 full */
+
+        .time-scale { display: flex; justify-content: space-between; font-family: monospace; font-weight: bold; color: #555; }
+
+        /* 內容顯示邏輯 */
+        .en { display: none; }
+        .active-en .en { display: block; }
+        .active-en .zh { display: none; }
+
+        .calc-step { background: #fff8e1; padding: 15px; border-radius: 8px; margin: 10px 0; border-left: 4px solid #ffc107; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .card { padding: 15px; border-radius: 8px; }
+        .pros { background: #e8f5e9; } .cons { background: #ffebee; }
+    </style>
+</head>
+<body>
+
+    <div class="container" id="content">
+        <button class="lang-toggle" onclick="toggleLang()">English / 中文</button>
+
+        <div class="zh">
+            <h1>SRT 搶佔式最短剩餘時間排程</h1>
+            <h2>Step-by-Step 執行演示</h2>
+            <p>範例：P1(BT:8, AT:0), P2(BT:4, AT:2), P3(BT:2, AT:5)</p>
+            
+            <div class="gantt-chart">
+                <div class="block b1">P1</div>
+                <div class="block b2">P2</div>
+                <div class="block b1-2">P1</div>
+                <div class="block b3">P3</div>
+            </div>
+            <div class="time-scale">
+                <span>0ms</span><span>2ms</span><span>6ms</span><span>12ms</span><span>14ms</span>
+            </div>
+
+            <div class="calc-step">
+                <strong>計算步驟：</strong><br>
+                1. <strong>0ms</strong>: P1 開始執行 (剩餘 8)。<br>
+                2. <strong>2ms</strong>: P2 到達 (BT:4)。此時 P1 剩 6。因為 4 < 6，P2 <strong>搶佔</strong> P1。<br>
+                3. <strong>6ms</strong>: P2 完成。P1 回來繼續做剩下的 6ms。<br>
+                4. <strong>12ms</strong>: P1 完成。P3(BT:2) 在 5ms 抵達，此刻開始執行直到 14ms。
+            </div>
+
+            <h3>平均數據計算</h3>
+            <p>周轉時間 (TAT) = 完成時間 - 到達時間<br>等待時間 (WT) = TAT - 執行時間 (BT)</p>
+            <ul>
+                <li>P1: TAT = 12-0 = 12 | WT = 12-8 = 4</li>
+                <li>P2: TAT = 6-2 = 4 | WT = 4-4 = 0</li>
+                <li>P3: TAT = 14-5 = 9 | WT = 9-2 = 7</li>
+            </ul>
+            <p><strong>平均 WT = (4+0+7)/3 = 3.67ms</strong></p>
+
+            <div class="grid">
+                <div class="card pros"><strong>✅ 優點：</strong>極小化平均等待時間，適合短任務。</div>
+                <div class="card cons"><strong>❌ 缺點：</strong>長任務可能飢餓，切換開銷大。</div>
+            </div>
+        </div>
+
+        <div class="en">
+            <h1>SRT Preemptive Scheduling</h1>
+            <h2>Step-by-Step Animation</h2>
+            <p>Example: P1(BT:8, AT:0), P2(BT:4, AT:2), P3(BT:2, AT:5)</p>
+            
+            <div class="gantt-chart">
+                <div class="block b1">P1</div>
+                <div class="block b2">P2</div>
+                <div class="block b1-2">P1</div>
+                <div class="block b3">P3</div>
+            </div>
+            <div class="time-scale">
+                <span>0ms</span><span>2ms</span><span>6ms</span><span>12ms</span><span>14ms</span>
+            </div>
+
+            <div class="calc-step">
+                <strong>Calculation Steps:</strong><br>
+                1. <strong>0ms</strong>: P1 starts (Remaining: 8).<br>
+                2. <strong>2ms</strong>: P2 arrives (BT:4). P1 remains 6. Since 4 < 6, P2 <strong>preempts</strong> P1.<br>
+                3. <strong>6ms</strong>: P2 finishes. P1 resumes its remaining 6ms.<br>
+                4. <strong>12ms</strong>: P1 finishes. P3 starts and runs until 14ms.
+            </div>
+
+            <h3>Metrics Results</h3>
+            <ul>
+                <li>Avg Turnaround Time (TAT) = <strong>8.33ms</strong></li>
+                <li>Avg Waiting Time (WT) = <strong>3.67ms</strong></li>
+            </ul>
+
+            <div class="grid">
+                <div class="card pros"><strong>✅ Pros:</strong> Optimal average waiting time; fast for short jobs.</div>
+                <div class="card cons"><strong>❌ Cons:</strong> Possible starvation; high context switch overhead.</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleLang() {
+            document.body.classList.toggle('active-en');
+            // Restart animation
+            const blocks = document.querySelectorAll('.block');
+            blocks.forEach(b => {
+                b.style.animation = 'none';
+                b.offsetHeight; 
+                b.style.animation = '';
+            });
+        }
+    </script>
+</body>
+</html>

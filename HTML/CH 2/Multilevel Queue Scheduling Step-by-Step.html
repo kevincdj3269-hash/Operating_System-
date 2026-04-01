@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Multilevel Queue Scheduling Step-by-Step</title>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --high-clr: #e74c3c;
+            --low-clr: #3498db;
+            --bg: #f4f7f6;
+        }
+
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { max-width: 850px; width: 100%; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        
+        .controls { display: flex; justify-content: space-between; margin-bottom: 20px; }
+        button { padding: 10px 20px; border-radius: 5px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        .btn-step { background: var(--high-clr); color: white; }
+        .btn-lang { background: var(--primary); color: white; }
+        button:hover { opacity: 0.8; transform: translateY(-2px); }
+
+        /* 佇列視覺顯示 */
+        .queue-container { margin: 10px 0; padding: 10px; border: 2px dashed #ccc; border-radius: 8px; }
+        .queue-label { font-weight: bold; margin-bottom: 5px; }
+
+        /* 甘特圖容器 */
+        .gantt-chart { display: flex; height: 60px; background: #eee; border-radius: 8px; overflow: hidden; margin: 20px 0; border: 2px solid #ddd; }
+        .block { display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; width: 0; opacity: 0; transition: all 0.8s ease; overflow: hidden; white-space: nowrap; }
+        .block.show { opacity: 1; }
+        
+        .b-high { background: var(--high-clr); } /* System Proc */
+        .b-low { background: var(--low-clr); }   /* User Proc */
+
+        .time-scale { display: flex; justify-content: space-between; font-weight: bold; font-family: monospace; height: 20px; }
+
+        /* 內容顯示切換 */
+        .zh { display: block; }
+        .en { display: none; }
+        .active-en .zh { display: none; }
+        .active-en .en { display: block; }
+
+        .info-box { background: #eef2f7; padding: 15px; border-radius: 8px; border-left: 5px solid var(--primary); margin-top: 20px; min-height: 80px; line-height: 1.6; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="controls">
+            <button class="btn-step" onclick="nextStep()">NEXT STEP / 下一步</button>
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+        </div>
+
+        <div class="zh">
+            <h1>多層佇列排程 (Multilevel Queue) 演譯</h1>
+            <p>場景：Q1(高優先權: 系統任務 P1), Q2(低優先權: 使用者任務 P2)</p>
+        </div>
+        <div class="en">
+            <h1>Multilevel Queue Scheduling Visualization</h1>
+            <p>Scenario: Q1(High Priority: System P1), Q2(Low Priority: User P2)</p>
+        </div>
+
+        <div class="gantt-chart">
+            <div id="pb1" class="block b-high" style="flex-basis: 50%">P1 (System)</div>
+            <div id="pb2" class="block b-low" style="flex-basis: 50%">P2 (User)</div>
+        </div>
+        <div class="time-scale">
+            <span>0</span><span id="t1" style="visibility:hidden">5ms</span><span id="t2" style="visibility:hidden">10ms</span>
+        </div>
+
+        <div class="info-box" id="info-text">
+            <span class="zh">點擊「下一步」觀察固定優先權的排程順序...</span>
+            <span class="en">Click "NEXT STEP" to observe fixed priority logic...</span>
+        </div>
+    </div>
+
+    <script>
+        let step = 0;
+        const infoZH = [
+            "步驟 1：CPU 優先檢查 Q1。P1 作為系統程序，無論 P2 是否同時到達，P1 都會先執行。",
+            "步驟 2：P1 執行完畢（5ms）。此時 Q1 已空，CPU 轉向執行次高優先權的 Q2。",
+            "步驟 3：P2 開始執行並在 10ms 時完成。如果中間有新的 Q1 任務進來，P2 會被迫停止。",
+            "演譯結束。這展示了 MLQ 的「絕對優先權」特性與潛在的飢餓問題。"
+        ];
+        const infoEN = [
+            "Step 1: CPU checks Q1 first. System process P1 runs first regardless of P2's arrival time.",
+            "Step 2: P1 finishes (5ms). Q1 is now empty, CPU switches to the next priority queue (Q2).",
+            "Step 3: P2 runs and finishes at 10ms. If a new Q1 task arrives, P2 would be interrupted.",
+            "End. This demonstrates the 'Absolute Priority' and potential starvation in MLQ."
+        ];
+
+        function nextStep() {
+            step++;
+            if(step > 4) {
+                step = 0;
+                document.querySelectorAll('.block').forEach(b => b.classList.remove('show'));
+                document.querySelectorAll('.time-scale span').forEach((s, i) => { if(i>0) s.style.visibility = 'hidden'; });
+            }
+
+            if(step >= 1) { document.getElementById('pb1').classList.add('show'); document.getElementById('t1').style.visibility = 'visible'; }
+            if(step >= 2) { /* P1 Done */ }
+            if(step >= 3) { document.getElementById('pb2').classList.add('show'); document.getElementById('t2').style.visibility = 'visible'; }
+
+            const zhSpan = document.querySelector('#info-text .zh');
+            const enSpan = document.querySelector('#info-text .en');
+            zhSpan.innerText = infoZH[step-1] || "點擊下一步重置。";
+            enSpan.innerText = infoEN[step-1] || "Click NEXT to reset.";
+        }
+
+        function toggleLang() {
+            document.body.classList.toggle('active-en');
+        }
+    </script>
+</body>
+</html>

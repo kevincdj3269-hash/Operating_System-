@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Thread Implementation Demo</title>
+    <style>
+        :root {
+            --kernel-clr: #2c3e50;
+            --user-clr: #3498db;
+            --blocked-clr: #e74c3c;
+            --bg: #f4f7f6;
+        }
+
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { max-width: 900px; width: 100%; background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); }
+        
+        .controls { display: flex; justify-content: center; gap: 15px; margin-bottom: 25px; }
+        button { padding: 12px 24px; border-radius: 50px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .btn-step { background: var(--kernel-clr); color: white; }
+        .btn-lang { background: #fff; border: 2px solid var(--kernel-clr); color: var(--kernel-clr); }
+        button:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.15); }
+
+        /* 繪圖區域 */
+        .stage { position: relative; height: 400px; border: 2px solid #eee; border-radius: 15px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 20px; overflow: hidden; }
+        
+        .layer { width: 100%; height: 120px; border: 2px dashed #ccc; border-radius: 10px; display: flex; justify-content: space-around; align-items: center; position: relative; }
+        .layer-label { position: absolute; left: 10px; top: -10px; background: white; padding: 0 10px; font-size: 0.8rem; font-weight: bold; color: #999; }
+
+        .thread-node { width: 120px; height: 50px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 0.8rem; transition: 0.5s; opacity: 0; transform: translateY(10px); }
+        .u-thread { background: var(--user-clr); }
+        .k-thread { background: var(--kernel-clr); }
+        .active { opacity: 1; transform: translateY(0); }
+        .blocked { background: var(--blocked-clr) !important; animation: shake 0.3s infinite; }
+
+        @keyframes shake { 0% { transform: translateX(0); } 25% { transform: translateX(5px); } 75% { transform: translateX(-5px); } 100% { transform: translateX(0); } }
+
+        /* 連接線 */
+        .connector { position: absolute; width: 2px; background: #ccc; z-index: -1; transition: 0.5s; height: 0; }
+        .conn-active { height: 100px; background: #3498db; }
+
+        .info-box { background: #fff; padding: 20px; border-radius: 12px; border-left: 6px solid var(--kernel-clr); min-height: 100px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); margin-top: 20px; line-height: 1.6; width: 100%; box-sizing: border-box; }
+        .en { display: none; }
+        .active-en .en { display: block; }
+        .active-en .zh { display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="container" id="app">
+        <div class="controls">
+            <button class="btn-step" onclick="nextStep()">STEP BY STEP / 下一步</button>
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文 切換</button>
+        </div>
+
+        <div class="stage">
+            <div class="layer">
+                <div class="layer-label">User Space (應用程式)</div>
+                <div id="ut1" class="thread-node u-thread">User Thread 1</div>
+                <div id="ut2" class="thread-node u-thread">User Thread 2</div>
+            </div>
+
+            <div class="layer">
+                <div class="layer-label">Kernel Space (作業系統)</div>
+                <div id="kt1" class="thread-node k-thread">Kernel Thread 1</div>
+                <div id="kt2" class="thread-node k-thread">Kernel Thread 2</div>
+            </div>
+        </div>
+
+        <div class="info-box" id="info">
+            <div class="zh">初始狀態：行程已建立，準備派發執行緒任務。</div>
+            <div class="en">Initial: Process created, preparing to dispatch thread tasks.</div>
+        </div>
+    </div>
+
+    <script>
+        let step = 0;
+        const ut1 = document.getElementById('ut1');
+        const ut2 = document.getElementById('ut2');
+        const kt1 = document.getElementById('kt1');
+        const kt2 = document.getElementById('kt2');
+        const info = document.getElementById('info');
+
+        const scenario = [
+            { 
+                zh: "1. 建立執行緒：應用程式呼叫 API，核心為其建立對應的 Kernel Threads (1:1 模式)。", 
+                en: "1. Create Threads: App calls API, Kernel creates corresponding Kernel Threads (1:1 model).",
+                nodes: ['ut1', 'ut2', 'kt1', 'kt2'], block: []
+            },
+            { 
+                zh: "2. 執行緒阻塞：執行緒 1 發起 I/O 請求。核心將其標記為 Blocked，CPU 被釋放。", 
+                en: "2. Thread Blocking: Thread 1 initiates I/O. Kernel marks it as Blocked; CPU is released.",
+                nodes: ['ut1', 'ut2', 'kt1', 'kt2'], block: ['ut1', 'kt1']
+            },
+            { 
+                zh: "3. 並行優勢：即便執行緒 1 阻塞，核心仍能排程執行緒 2 繼續工作，系統不會卡死。", 
+                en: "3. Parallelism Advantage: Even if Thread 1 is blocked, Kernel dispatches Thread 2 to continue.",
+                nodes: ['ut1', 'ut2', 'kt1', 'kt2'], block: ['ut1', 'kt1'], active2: true
+            },
+            { 
+                zh: "重置演譯。", en: "Resetting demo.", nodes: [], block: []
+            }
+        ];
+
+        function nextStep() {
+            const data = scenario[step];
+            document.querySelectorAll('.thread-node').forEach(n => {
+                n.classList.remove('active', 'blocked');
+                if(data.nodes.includes(n.id)) n.classList.add('active');
+                if(data.block.includes(n.id)) n.classList.add('blocked');
+            });
+
+            info.innerHTML = `<div class="zh">${data.zh}</div><div class="en">${data.en}</div>`;
+            step = (step + 1) % scenario.length;
+        }
+
+        function toggleLang() { document.body.classList.toggle('active-en'); }
+    </script>
+</body>
+</html>

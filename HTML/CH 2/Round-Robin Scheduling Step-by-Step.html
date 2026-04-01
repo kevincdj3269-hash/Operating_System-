@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Round-Robin Scheduling Step-by-Step</title>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --accent: #27ae60;
+            --p1: #3498db;
+            --p2: #e67e22;
+            --bg: #f4f7f6;
+        }
+
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { max-width: 850px; width: 100%; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        
+        .controls { display: flex; justify-content: space-between; margin-bottom: 20px; }
+        button { padding: 10px 20px; border-radius: 5px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        .btn-step { background: var(--accent); color: white; }
+        .btn-lang { background: var(--primary); color: white; }
+        button:hover { opacity: 0.8; transform: translateY(-2px); }
+
+        /* 甘特圖容器 */
+        .gantt-chart { display: flex; height: 60px; background: #eee; border-radius: 8px; overflow: hidden; margin: 20px 0; border: 2px solid #ddd; }
+        .block { display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; width: 0; opacity: 0; transition: all 0.6s ease; overflow: hidden; white-space: nowrap; border-right: 1px solid rgba(255,255,255,0.3); }
+        .block.show { opacity: 1; }
+        
+        .b1 { background: var(--p1); } /* P1 */
+        .b2 { background: var(--p2); } /* P2 */
+
+        .time-scale { display: flex; justify-content: space-between; font-weight: bold; font-family: monospace; height: 20px; }
+
+        .zh { display: block; }
+        .en { display: none; }
+        .active-en .zh { display: none; }
+        .active-en .en { display: block; }
+
+        .info-box { background: #e8f5e9; padding: 15px; border-radius: 8px; border-left: 5px solid var(--accent); margin-top: 20px; min-height: 80px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="controls">
+            <button class="btn-step" onclick="nextStep()">NEXT STEP / 下一步</button>
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+        </div>
+
+        <div class="zh">
+            <h1>循環分時排程 (Round-Robin) 演譯</h1>
+            <p>範例：P1(BT:10ms), P2(BT:4ms)。時間量 (Quantum) = 4ms。</p>
+        </div>
+        <div class="en">
+            <h1>Round-Robin Scheduling Visualization</h1>
+            <p>Example: P1(BT:10ms), P2(BT:4ms). Time Quantum = 4ms.</p>
+        </div>
+
+        <div class="gantt-chart">
+            <div id="pb1" class="block b1" style="flex-basis: 28.5%">P1 (4)</div>
+            <div id="pb2" class="block b2" style="flex-basis: 28.5%">P2 (4)</div>
+            <div id="pb3" class="block b1" style="flex-basis: 28.5%">P1 (4)</div>
+            <div id="pb4" class="block b1" style="flex-basis: 14.5%">P1 (2)</div>
+        </div>
+        <div class="time-scale">
+            <span>0</span><span id="t1" style="visibility:hidden">4</span><span id="t2" style="visibility:hidden">8</span><span id="t3" style="visibility:hidden">12</span><span id="t4" style="visibility:hidden">14</span>
+        </div>
+
+        <div class="info-box" id="info-text">
+            <span class="zh">點擊「下一步」看時間片如何分配...</span>
+            <span class="en">Click "NEXT STEP" to see time slice allocation...</span>
+        </div>
+    </div>
+
+    <script>
+        let step = 0;
+        const infoZH = [
+            "步驟 1：P1 執行一個時間量 (4ms)。時間到，P1 剩餘 6ms 並回到隊尾。",
+            "步驟 2：換 P2 執行。P2 剛好需要 4ms，執行完畢退出系統 (CT=8ms)。",
+            "步驟 3：P1 回到 CPU 執行第二個時間量 (4ms)。P1 剩餘 2ms。",
+            "步驟 4：P1 執行最後的 2ms。排程結束 (CT=14ms)。"
+        ];
+        const infoEN = [
+            "Step 1: P1 runs for 1 quantum (4ms). P1 has 6ms left and moves to the end of queue.",
+            "Step 2: P2 runs. P2 needs exactly 4ms and finishes (CT=8ms).",
+            "Step 3: P1 returns to CPU for its 2nd quantum (4ms). P1 has 2ms left.",
+            "Step 4: P1 runs its final 2ms. Scheduling complete (CT=14ms)."
+        ];
+
+        function nextStep() {
+            step++;
+            if(step > 4) {
+                step = 0;
+                document.querySelectorAll('.block').forEach(b => b.classList.remove('show'));
+                document.querySelectorAll('.time-scale span').forEach((s, i) => { if(i>0) s.style.visibility = 'hidden'; });
+            }
+            if(step >= 1) { document.getElementById('pb1').classList.add('show'); document.getElementById('t1').style.visibility = 'visible'; }
+            if(step >= 2) { document.getElementById('pb2').classList.add('show'); document.getElementById('t2').style.visibility = 'visible'; }
+            if(step >= 3) { document.getElementById('pb3').classList.add('show'); document.getElementById('t3').style.visibility = 'visible'; }
+            if(step >= 4) { document.getElementById('pb4').classList.add('show'); document.getElementById('t4').style.visibility = 'visible'; }
+
+            document.querySelector('#info-text .zh').innerText = infoZH[step-1] || "點擊下一步重置。";
+            document.querySelector('#info-text .en').innerText = infoEN[step-1] || "Click NEXT to reset.";
+        }
+
+        function toggleLang() { document.body.classList.toggle('active-en'); }
+    </script>
+</body>
+</html>

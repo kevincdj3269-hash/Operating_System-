@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OS Scheduling Queues Interactive Demo</title>
+    <style>
+        :root {
+            --job-clr: #95a5a6;
+            --ready-clr: #2ecc71;
+            --cpu-clr: #e74c3c;
+            --wait-clr: #f1c40f;
+            --dark: #2c3e50;
+            --bg: #f8f9fa;
+        }
+
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { max-width: 1000px; width: 100%; background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); }
+        
+        .controls { display: flex; justify-content: center; gap: 15px; margin-bottom: 30px; }
+        button { padding: 12px 24px; border-radius: 50px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .btn-step { background: var(--dark); color: white; }
+        .btn-lang { background: #fff; border: 2px solid var(--dark); color: var(--dark); }
+        button:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.15); }
+
+        /* 畫布區域 */
+        .stage { position: relative; height: 400px; background: #fff; border: 2px solid #eee; border-radius: 15px; margin: 20px 0; overflow: hidden; }
+
+        /* 佇列視覺容器 */
+        .queue-box { position: absolute; border: 2px solid #ddd; border-radius: 10px; padding: 10px; text-align: center; font-size: 0.8rem; font-weight: bold; color: #7f8c8d; }
+        #box-job { width: 120px; height: 200px; left: 50px; top: 100px; }
+        #box-ready { width: 300px; height: 80px; left: 250px; top: 50px; }
+        #box-cpu { width: 100px; height: 100px; right: 100px; top: 40px; border-radius: 50%; border-color: var(--cpu-clr); color: var(--cpu-clr); display: flex; align-items: center; justify-content: center; }
+        #box-wait { width: 300px; height: 80px; left: 250px; top: 250px; }
+
+        /* 行程小球 */
+        .process-ball {
+            width: 40px; height: 40px; border-radius: 50%; background: var(--dark);
+            position: absolute; color: white; display: flex; align-items: center; justify-content: center;
+            font-size: 0.7rem; font-weight: bold;
+            transition: all 0.8s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+            z-index: 100; left: 90px; top: 180px;
+        }
+
+        /* 說明文字 */
+        .info-box { background: #fff; padding: 20px; border-radius: 12px; border-left: 6px solid var(--dark); min-height: 100px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); font-size: 1.1rem; line-height: 1.6; }
+        
+        .en { display: none; }
+        .active-en .en { display: block; }
+        .active-en .zh { display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="container" id="app">
+        <div class="controls">
+            <button class="btn-step" onclick="nextStep()">STEP BY STEP / 下一步</button>
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文 切換</button>
+        </div>
+
+        <div class="stage">
+            <div id="box-job" class="queue-box">Job Queue<br>(Disk)</div>
+            <div id="box-ready" class="queue-box">Ready Queue (RAM)</div>
+            <div id="box-cpu" class="queue-box">CPU</div>
+            <div id="box-wait" class="queue-box">Wait/Device Queue</div>
+
+            <div id="p1" class="process-ball">P1</div>
+        </div>
+
+        <div class="info-box" id="info">
+            <div class="zh">初始狀態：行程 P1 位於磁碟的工作佇列中。</div>
+            <div class="en">Initial: Process P1 is in the Job Queue (Disk).</div>
+        </div>
+    </div>
+
+    <script>
+        let step = 0;
+        const p1 = document.getElementById('p1');
+        const info = document.getElementById('info');
+
+        const scenario = [
+            { pos: {left: '380px', top: '70px', bg: 'var(--ready-clr)'}, zh: '1. 長期排程：將行程從磁碟載入記憶體的【就緒佇列】。', en: '1. Long-term Scheduling: Loading process from Disk to [Ready Queue] in RAM.' },
+            { pos: {left: '750px', top: '70px', bg: 'var(--cpu-clr)'}, zh: '2. 短期排程：從就緒佇列選中 P1，進入【CPU】開始執行。', en: '2. Short-term Scheduling: Selecting P1 from Ready Queue to execute on [CPU].' },
+            { pos: {left: '380px', top: '270px', bg: 'var(--wait-clr)'}, zh: '3. I/O 請求：行程需要等待設備（如磁碟讀取），移入【等待佇列】。', en: '3. I/O Request: Process needs to wait for a device, moves to [Wait Queue].' },
+            { pos: {left: '300px', top: '70px', bg: 'var(--ready-clr)'}, zh: '4. I/O 完成：等待結束，行程重新回到【就緒佇列】等待 CPU。', en: '4. I/O Complete: Waiting ends, process returns to [Ready Queue].' },
+            { pos: {left: '90px', top: '180px', bg: 'var(--dark)'}, zh: '結束/重置：行程執行完畢或重新開始演譯。', en: 'Exit/Reset: Process finishes or restart the demo.' }
+        ];
+
+        function nextStep() {
+            const data = scenario[step];
+            p1.style.left = data.pos.left;
+            p1.style.top = data.pos.top;
+            p1.style.backgroundColor = data.pos.bg;
+            
+            info.innerHTML = `
+                <div class="zh">${data.zh}</div>
+                <div class="en">${data.en}</div>
+            `;
+            
+            step = (step + 1) % scenario.length;
+        }
+
+        function toggleLang() {
+            document.body.classList.toggle('active-en');
+        }
+    </script>
+</body>
+</html>

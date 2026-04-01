@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>MLFQ Scheduling Step-by-Step</title>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --q0-clr: #e74c3c;
+            --q1-clr: #f1c40f;
+            --q2-clr: #3498db;
+            --bg: #f4f7f6;
+        }
+
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { max-width: 850px; width: 100%; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        
+        .controls { display: flex; justify-content: space-between; margin-bottom: 20px; }
+        button { padding: 10px 20px; border-radius: 5px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        .btn-step { background: #27ae60; color: white; }
+        .btn-lang { background: var(--primary); color: white; }
+        button:hover { opacity: 0.8; transform: translateY(-2px); }
+
+        /* 甘特圖容器 */
+        .gantt-chart { display: flex; height: 60px; background: #eee; border-radius: 8px; overflow: hidden; margin: 20px 0; border: 2px solid #ddd; position: relative; }
+        .block { display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; width: 0; opacity: 0; transition: all 0.6s ease; overflow: hidden; }
+        .block.show { opacity: 1; }
+        
+        .b-q0 { background: var(--q0-clr); }
+        .b-q1 { background: var(--q1-clr); color: #333; }
+        .b-q2 { background: var(--q2-clr); }
+
+        .time-scale { display: flex; justify-content: space-between; font-weight: bold; font-family: monospace; height: 20px; }
+
+        .zh { display: block; }
+        .en { display: none; }
+        .active-en .zh { display: none; }
+        .active-en .en { display: block; }
+
+        .info-box { background: #fffde7; padding: 15px; border-radius: 8px; border-left: 5px solid #fbc02d; margin-top: 20px; min-height: 80px; line-height: 1.6; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="controls">
+            <button class="btn-step" onclick="nextStep()">NEXT STEP / 下一步</button>
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+        </div>
+
+        <div class="zh">
+            <h1>多層回饋佇列 (MLFQ) 演譯</h1>
+            <p>範例：P1 (BT:10ms)。Q0(Q=2), Q1(Q=4), Q2(FCFS)</p>
+        </div>
+        <div class="en">
+            <h1>MLFQ Scheduling Visualization</h1>
+            <p>Example: P1 (BT:10ms). Q0(Q=2), Q1(Q=4), Q2(FCFS)</p>
+        </div>
+
+        <div class="gantt-chart">
+            <div id="pb1" class="block b-q0" style="flex-basis: 20%">Q0 (2)</div>
+            <div id="pb2" class="block b-q1" style="flex-basis: 40%">Q1 (4)</div>
+            <div id="pb3" class="block b-q2" style="flex-basis: 40%">Q2 (4)</div>
+        </div>
+        <div class="time-scale">
+            <span>0</span><span id="t1" style="visibility:hidden">2ms</span><span id="t2" style="visibility:hidden">6ms</span><span id="t3" style="visibility:hidden">10ms</span>
+        </div>
+
+        <div class="info-box" id="info-text">
+            <span class="zh">點擊「下一步」看程序如何在佇列間移動...</span>
+            <span class="en">Click "NEXT STEP" to see how process moves...</span>
+        </div>
+    </div>
+
+    <script>
+        let step = 0;
+        const infoZH = [
+            "步驟 1：P1 進入最高優先權 Q0。執行 2ms 後時間到，任務未完成，<span style='color:red'>降級至 Q1</span>。",
+            "步驟 2：P1 在 Q1 獲得更長的時間片 (4ms)。執行完後仍未結束，<span style='color:red'>降級至 Q2</span>。",
+            "步驟 3：P1 進入最低層 Q2 (FCFS)。在此完成剩餘的 4ms 並離開系統。",
+            "演譯結束。這種機制自動將「短任務」留在上方，「長任務」沈澱到底層。"
+        ];
+        const infoEN = [
+            "Step 1: P1 enters High Priority Q0. After 2ms, quantum expires. Task not done, <span style='color:red'>demoted to Q1</span>.",
+            "Step 2: P1 runs in Q1 with a longer quantum (4ms). Still not finished, <span style='color:red'>demoted to Q2</span>.",
+            "Step 3: P1 enters Q2 (FCFS). It completes the remaining 4ms here and leaves the system.",
+            "End. This automatically keeps 'Short Jobs' at top and 'Long Jobs' at bottom."
+        ];
+
+        function nextStep() {
+            step++;
+            if(step > 4) {
+                step = 0;
+                document.querySelectorAll('.block').forEach(b => b.classList.remove('show'));
+                document.querySelectorAll('.time-scale span').forEach((s, i) => { if(i>0) s.style.visibility = 'hidden'; });
+            }
+
+            if(step >= 1) { document.getElementById('pb1').classList.add('show'); document.getElementById('t1').style.visibility = 'visible'; }
+            if(step >= 2) { document.getElementById('pb2').classList.add('show'); document.getElementById('t2').style.visibility = 'visible'; }
+            if(step >= 3) { document.getElementById('pb3').classList.add('show'); document.getElementById('t3').style.visibility = 'visible'; }
+
+            const zhSpan = document.querySelector('#info-text .zh');
+            const enSpan = document.querySelector('#info-text .en');
+            zhSpan.innerHTML = infoZH[step-1] || "點擊下一步重置。";
+            enSpan.innerHTML = infoEN[step-1] || "Click NEXT to reset.";
+        }
+
+        function toggleLang() {
+            document.body.classList.toggle('active-en');
+        }
+    </script>
+</body>
+</html>

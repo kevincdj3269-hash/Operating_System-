@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preemptive Priority Scheduling Tutorial</title>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --accent: #e74c3c;
+            --high: #e74c3c;
+            --low: #3498db;
+            --mid: #f1c40f;
+            --bg: #f4f7f6;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 850px;
+            width: 100%;
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+
+        /* 控制區域 */
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        button {
+            padding: 10px 20px;
+            border-radius: 5px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+
+        .btn-step { background: var(--accent); color: white; }
+        .btn-lang { background: var(--primary); color: white; }
+        button:hover { opacity: 0.8; transform: translateY(-2px); }
+
+        /* 甘特圖容器 */
+        .gantt-chart {
+            display: flex;
+            height: 60px;
+            background: #eee;
+            border-radius: 8px;
+            overflow: hidden;
+            margin: 20px 0;
+            border: 2px solid #ddd;
+        }
+
+        /* 程序塊樣式 */
+        .block {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            transition: all 0.8s ease;
+            width: 0;
+            opacity: 0;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        .b1 { background: var(--low); } /* P1 (Pri:3) */
+        .b2 { background: var(--high); } /* P2 (Pri:1) */
+
+        /* 用於顯示的 Class */
+        .block.show { opacity: 1; }
+
+        /* 時間軸 */
+        .time-scale {
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+            font-family: monospace;
+            height: 20px;
+        }
+
+        /* 內容顯示控制 */
+        .zh { display: block; }
+        .en { display: none; }
+        .active-en .zh { display: none; }
+        .active-en .en { display: block; }
+
+        .info-box {
+            background: #eef2f7;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 5px solid var(--accent);
+            margin-top: 20px;
+            min-height: 80px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container" id="main">
+        <div class="controls">
+            <button class="btn-step" onclick="nextStep()">NEXT STEP / 下一步</button>
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+        </div>
+
+        <div class="zh">
+            <h1>可搶先式優先權排程演譯</h1>
+            <p>範例數據：P1(AT:0, BT:8, Pri:3), P2(AT:2, BT:4, Pri:1)<br>註：優先權數字越小越優先。</p>
+        </div>
+
+        <div class="en">
+            <h1>Preemptive Priority Scheduling Demonstration</h1>
+            <p>Data: P1(AT:0, BT:8, Pri:3), P2(AT:2, BT:4, Pri:1)<br>Note: Lower number = Higher priority.</p>
+        </div>
+
+        <div class="gantt-chart">
+            <div id="pb1" class="block b1" style="flex-basis: 16.7%">P1(Low)</div>
+            <div id="pb2" class="block b2" style="flex-basis: 33.3%">P2(High)</div>
+            <div id="pb3" class="block b1" style="flex-basis: 50%">P1(Resume)</div>
+        </div>
+        
+        <div class="time-scale">
+            <span>0ms</span>
+            <span id="t1" style="visibility:hidden">2ms</span>
+            <span id="t2" style="visibility:hidden">6ms</span>
+            <span id="t3" style="visibility:hidden">12ms</span>
+        </div>
+
+        <div class="info-box" id="info-text">
+            <span class="zh">點擊「下一步」開始演譯步驟...</span>
+            <span class="en">Click "NEXT STEP" to start...</span>
+        </div>
+    </div>
+
+    <script>
+        let step = 0;
+        const infoZH = [
+            "步驟 1：0ms 時 P1 到達並開始執行（CPU 空閒）。此時 P1 剩餘 8ms。",
+            "步驟 2：2ms 時 P2(Pri:1) 到達。因為 P2 優先權高於 P1(Pri:3)，<span style='color:red'>P1 被搶佔</span>，P2 開始執行。",
+            "步驟 3：6ms 時 P2 完成工作。CPU 重新分配給剩餘時間最長且優先權最高的 P1。P1 繼續執行剩下的 6ms。",
+            "演譯結束。總完成時間為 12ms。"
+        ];
+        const infoEN = [
+            "Step 1: P1 arrives at 0ms and starts (CPU idle). P1 has 8ms remaining.",
+            "Step 2: P2(Pri:1) arrives at 2ms. As P2 has higher priority than P1(Pri:3), <span style='color:red'>P1 is preempted</span>, P2 starts.",
+            "Step 3: P2 finishes at 6ms. CPU is re-allocated to P1 (highest priority). P1 resumes for its remaining 6ms.",
+            "Demonstration ended. Total completion time is 12ms."
+        ];
+
+        function nextStep() {
+            step++;
+            if(step > 4) {
+                step = 0;
+                document.querySelectorAll('.block').forEach(b => b.classList.remove('show'));
+                document.querySelectorAll('.time-scale span').forEach((s, i) => { if(i>0) s.style.visibility = 'hidden'; });
+            }
+
+            if(step >= 1) { document.getElementById('pb1').classList.add('show'); document.getElementById('t1').style.visibility = 'visible'; }
+            if(step >= 2) { document.getElementById('pb2').classList.add('show'); document.getElementById('t2').style.visibility = 'visible'; }
+            if(step >= 3) { document.getElementById('pb3').classList.add('show'); document.getElementById('t3').style.visibility = 'visible'; }
+
+            const zhSpan = document.querySelector('#info-text .zh');
+            const enSpan = document.querySelector('#info-text .en');
+            zhSpan.innerHTML = infoZH[step-1] || "點擊「下一步」重置演譯。";
+            enSpan.innerHTML = infoEN[step-1] || "Click NEXT to reset demonstration.";
+        }
+
+        function toggleLang() {
+            document.body.classList.toggle('active-en');
+            nextStep(); // Refresh current step text
+            step--; // Keep current step
+        }
+    </script>
+</body>
+</html>

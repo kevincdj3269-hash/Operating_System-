@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Short-term Scheduler (CPU Scheduler) Demo</title>
+    <style>
+        :root {
+            --ready-clr: #2ecc71;
+            --cpu-clr: #e74c3c;
+            --dispatch-clr: #f1c40f;
+            --dark: #2c3e50;
+            --bg: #f8f9fa;
+        }
+
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { max-width: 900px; width: 100%; background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); }
+        
+        .controls { display: flex; justify-content: center; gap: 15px; margin-bottom: 30px; }
+        button { padding: 12px 24px; border-radius: 50px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .btn-step { background: var(--dark); color: white; }
+        .btn-lang { background: #fff; border: 2px solid var(--dark); color: var(--dark); }
+        button:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.15); }
+
+        /* 演譯區域 */
+        .stage { position: relative; height: 300px; background: #fff; border: 2px solid #eee; border-radius: 15px; margin: 20px 0; display: flex; justify-content: space-around; align-items: center; }
+
+        .queue-box { width: 300px; height: 100px; border: 3px solid var(--ready-clr); border-radius: 10px; display: flex; align-items: center; justify-content: flex-start; padding: 0 15px; gap: 10px; position: relative; }
+        .cpu-box { width: 120px; height: 120px; border: 4px solid var(--cpu-clr); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: var(--cpu-clr); position: relative; }
+        
+        .box-label { position: absolute; top: -25px; left: 0; width: 100%; text-align: center; font-size: 0.8rem; font-weight: bold; color: #7f8c8d; }
+
+        /* 行程小球 */
+        .proc {
+            width: 45px; height: 45px; border-radius: 50%; background: var(--ready-clr);
+            display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 0.8rem;
+            transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            position: absolute;
+        }
+
+        #p1 { left: 25px; top: 25px; }
+        #p2 { left: 85px; top: 25px; }
+        #p3 { left: 145px; top: 25px; }
+
+        /* 分派器指示線 */
+        .dispatcher-line {
+            position: absolute; height: 4px; background: var(--dispatch-clr);
+            width: 0; left: 350px; top: 50%; transform: translateY(-50%);
+            transition: width 0.4s; z-index: 1;
+        }
+
+        .info-box { background: #fff; padding: 20px; border-radius: 12px; border-left: 6px solid var(--cpu-clr); min-height: 100px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); font-size: 1.1rem; line-height: 1.6; width: 100%; box-sizing: border-box; }
+
+        .en { display: none; }
+        .active-en .en { display: block; }
+        .active-en .zh { display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="container" id="app">
+        <div class="controls">
+            <button class="btn-step" onclick="nextStep()">STEP BY STEP / 下一步</button>
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文 切換</button>
+        </div>
+
+        <div class="stage">
+            <div class="queue-box">
+                <div class="box-label zh">就緒佇列 (Ready Queue)</div>
+                <div class="box-label en">Ready Queue</div>
+                <div id="p1" class="proc">P1</div>
+                <div id="p2" class="proc">P2</div>
+                <div id="p3" class="proc">P3</div>
+            </div>
+
+            <div id="d-line" class="dispatcher-line"></div>
+
+            <div class="cpu-box">
+                <div class="box-label">CPU</div>
+                <span id="cpu-status">IDLE</span>
+            </div>
+        </div>
+
+        <div class="info-box" id="info">
+            <div class="zh">初始狀態：多個行程在就緒佇列中等待短期排程器。</div>
+            <div class="en">Initial: Multiple processes in the Ready Queue waiting for Short-term Scheduler.</div>
+        </div>
+    </div>
+
+    <script>
+        let step = 0;
+        const info = document.getElementById('info');
+        const p1 = document.getElementById('p1');
+        const dLine = document.getElementById('d-line');
+        const cpuStatus = document.getElementById('cpu-status');
+
+        const scenario = [
+            { 
+                zh: "1. 短期排程：排程器決定選取佇列首位的 P1。", 
+                en: "1. Short-term Scheduling: Scheduler decides to select P1 from the head of the queue.",
+                moveP1: { left: '300px', top: '25px' },
+                line: '50px', cpu: 'IDLE'
+            },
+            { 
+                zh: "2. 分派 (Dispatch)：分派器接管，將 P1 送入 CPU 並進行內文切換。", 
+                en: "2. Dispatching: Dispatcher takes over, moving P1 to CPU and performing context switch.",
+                moveP1: { left: '685px', top: '125px' },
+                line: '300px', cpu: 'RUNNING'
+            },
+            { 
+                zh: "3. 執行中：P1 目前正佔用 CPU 控制權。其他行程繼續在佇列等待。", 
+                en: "3. Executing: P1 is now holding CPU control. Others continue to wait in queue.",
+                moveP1: { left: '685px', top: '125px', bg: '#e74c3c' },
+                line: '0px', cpu: 'P1'
+            },
+            { zh: "重置演譯。", en: "Resetting demo." }
+        ];
+
+        function nextStep() {
+            const current = scenario[step];
+            if (step === 3) { location.reload(); return; }
+
+            p1.style.left = current.moveP1.left;
+            p1.style.top = current.moveP1.top;
+            if(current.moveP1.bg) p1.style.backgroundColor = current.moveP1.bg;
+            
+            dLine.style.width = current.line;
+            cpuStatus.innerText = current.cpu;
+
+            info.innerHTML = `<div class="zh">${current.zh}</div><div class="en">${current.en}</div>`;
+            step++;
+        }
+
+        function toggleLang() { document.body.classList.toggle('active-en'); }
+    </script>
+</body>
+</html>

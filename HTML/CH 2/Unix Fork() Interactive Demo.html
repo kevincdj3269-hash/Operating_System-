@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Unix Fork() Interactive Demo</title>
+    <style>
+        :root {
+            --parent-clr: #3498db;
+            --child-clr: #e67e22;
+            --dark: #2c3e50;
+            --bg: #f5f6fa;
+        }
+
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { max-width: 850px; width: 100%; background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        
+        .controls { display: flex; justify-content: center; gap: 15px; margin-bottom: 30px; }
+        button { padding: 12px 25px; border-radius: 50px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .btn-step { background: var(--dark); color: white; }
+        .btn-lang { background: #fff; border: 2px solid var(--dark); color: var(--dark); }
+        button:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.15); }
+
+        /* 演譯區域 */
+        .stage { position: relative; height: 300px; background: #fff; border: 2px solid #eee; border-radius: 15px; margin: 20px 0; overflow: hidden; display: flex; justify-content: center; align-items: center; }
+
+        .process {
+            width: 120px;
+            height: 120px;
+            border-radius: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            position: absolute;
+            transition: all 0.8s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+
+        #parent { background: var(--parent-clr); z-index: 10; }
+        #child { background: var(--child-clr); opacity: 0; transform: scale(0.5); z-index: 5; }
+
+        .pid-tag { font-size: 0.8rem; margin-top: 5px; opacity: 0.9; }
+
+        /* 說明框 */
+        .info-box { background: #fff; padding: 20px; border-radius: 12px; border-left: 6px solid var(--parent-clr); min-height: 100px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); font-size: 1.1rem; line-height: 1.6; width: 100%; box-sizing: border-box; }
+
+        .en { display: none; }
+        .active-en .en { display: block; }
+        .active-en .zh { display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="container" id="app">
+        <div class="controls">
+            <button class="btn-step" onclick="nextStep()">STEP BY STEP / 下一步</button>
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文 切換</button>
+        </div>
+
+        <div class="stage">
+            <div id="parent" class="process">
+                <span>PARENT</span>
+                <span class="pid-tag" id="p-ret">PID: 1001</span>
+            </div>
+            <div id="child" class="process">
+                <span>CHILD</span>
+                <span class="pid-tag" id="c-ret">PID: ????</span>
+            </div>
+        </div>
+
+        <div class="info-box" id="info">
+            <div class="zh">初始狀態：父行程 (PID: 1001) 正在執行。</div>
+            <div class="en">Initial State: Parent process (PID: 1001) is running.</div>
+        </div>
+    </div>
+
+    <script>
+        let step = 0;
+        const parent = document.getElementById('parent');
+        const child = document.getElementById('child');
+        const pRet = document.getElementById('p-ret');
+        const cRet = document.getElementById('c-ret');
+
+        const scenario = [
+            { 
+                zh: '1. 呼叫 fork()：系統開始為子行程準備資源並複製父行程的位址空間。', 
+                en: '1. Calling fork(): System prepares resources and duplicates parent\'s address space.' 
+            },
+            { 
+                zh: '2. 建立副本：子行程 (PID: 1002) 被創建，目前內容與父行程幾乎完全相同。', 
+                en: '2. Duplicate Created: Child (PID: 1002) is created, virtually identical to the parent.' 
+            },
+            { 
+                zh: '3. 區分回傳值：父行程收到子 PID (1002)，子行程收到 0。', 
+                en: '3. Different Return Values: Parent receives Child PID (1002), Child receives 0.' 
+            },
+            { 
+                zh: '4. 各自執行：父子行程現在是獨立實體，各自執行後續程式碼。', 
+                en: '4. Independent Execution: Parent and Child are now separate entities running independently.' 
+            }
+        ];
+
+        function nextStep() {
+            step = (step + 1) % 5;
+            
+            if (step === 0) {
+                parent.style.transform = 'translateX(0)';
+                child.style.opacity = '0';
+                child.style.transform = 'scale(0.5)';
+                pRet.innerText = "PID: 1001";
+                updateInfo("重置演譯。", "Resetting demo.");
+            } else if (step === 1) {
+                updateInfo(scenario[0].zh, scenario[0].en);
+            } else if (step === 2) {
+                child.style.opacity = '1';
+                child.style.transform = 'translateX(100px) scale(1)';
+                parent.style.transform = 'translateX(-100px)';
+                updateInfo(scenario[1].zh, scenario[1].en);
+            } else if (step === 3) {
+                pRet.innerText = "fork() -> 1002";
+                cRet.innerText = "fork() -> 0";
+                updateInfo(scenario[2].zh, scenario[2].en);
+            } else if (step === 4) {
+                parent.style.transform = 'translate(-120px, -20px)';
+                child.style.transform = 'translate(120px, 20px)';
+                updateInfo(scenario[3].zh, scenario[3].en);
+            }
+        }
+
+        function updateInfo(zh, en) {
+            document.getElementById('info').innerHTML = `
+                <div class="zh">${zh}</div>
+                <div class="en">${en}</div>
+            `;
+        }
+
+        function toggleLang() {
+            document.body.classList.toggle('active-en');
+        }
+    </script>
+</body>
+</html>

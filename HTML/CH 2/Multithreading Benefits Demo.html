@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Multithreading Benefits Demo</title>
+    <style>
+        :root {
+            --process-clr: #2c3e50;
+            --thread-clr: #3498db;
+            --task-clr: #e67e22;
+            --bg: #f5f6fa;
+        }
+
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { max-width: 850px; width: 100%; background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); }
+        
+        .controls { display: flex; justify-content: center; gap: 15px; margin-bottom: 30px; }
+        button { padding: 12px 25px; border-radius: 50px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .btn-step { background: var(--process-clr); color: white; }
+        .btn-lang { background: #fff; border: 2px solid var(--process-clr); color: var(--process-clr); }
+        button:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.15); }
+
+        /* 演譯區域 */
+        .stage { position: relative; height: 350px; background: #fff; border: 2px solid #eee; border-radius: 15px; margin: 20px 0; overflow: hidden; display: flex; justify-content: center; align-items: center; }
+
+        .process-box {
+            width: 300px; height: 220px; border: 4px dashed var(--process-clr); border-radius: 20px;
+            display: flex; flex-direction: column; align-items: center; justify-content: space-around; padding: 20px; position: relative;
+        }
+        .box-label { position: absolute; top: -15px; background: white; padding: 0 10px; font-weight: bold; color: var(--process-clr); }
+
+        .thread {
+            width: 80%; height: 45px; background: var(--thread-clr); color: white; border-radius: 10px;
+            display: flex; align-items: center; justify-content: center; font-size: 0.9rem; font-weight: bold;
+            transition: all 0.6s ease; opacity: 0; transform: translateY(20px);
+        }
+        .thread.active { opacity: 1; transform: translateY(0); }
+        .working { animation: pulse 1s infinite alternate; background: var(--task-clr) !important; }
+
+        @keyframes pulse { from { opacity: 1; } to { opacity: 0.6; } }
+
+        /* 說明框 */
+        .info-box { background: #eef2f7; padding: 20px; border-radius: 12px; border-left: 6px solid var(--process-clr); min-height: 100px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); font-size: 1.1rem; line-height: 1.6; width: 100%; box-sizing: border-box; }
+
+        .en { display: none; }
+        .active-en .en { display: block; }
+        .active-en .zh { display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="container" id="app">
+        <div class="controls">
+            <button class="btn-step" onclick="nextStep()">STEP BY STEP / 下一步</button>
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文 切換</button>
+        </div>
+
+        <div class="stage">
+            <div class="process-box">
+                <div class="box-label">Process (行程)</div>
+                <div id="t1" class="thread">Thread 1: UI Handler</div>
+                <div id="t2" class="thread">Thread 2: Data Processing</div>
+            </div>
+        </div>
+
+        <div class="info-box" id="info">
+            <div class="zh">初始狀態：一個行程已經建立，但尚未啟動執行緒。</div>
+            <div class="en">Initial: A process is created but threads are not yet active.</div>
+        </div>
+    </div>
+
+    <script>
+        let step = 0;
+        const t1 = document.getElementById('t1');
+        const t2 = document.getElementById('t2');
+        const info = document.getElementById('info');
+
+        const scenario = [
+            { 
+                zh: "1. 資源共享：建立執行緒 1 與 2，兩者共享行程內的記憶體與變數。", 
+                en: "1. Resource Sharing: Threads 1 & 2 share memory and variables within the process.",
+                act1: true, act2: true, work1: false, work2: false
+            },
+            { 
+                zh: "2. 回應性：執行緒 2 開始處理背景大數據運算（變色閃爍）。", 
+                en: "2. Responsiveness: Thread 2 starts processing background data (color pulsing).",
+                act1: true, act2: true, work1: false, work2: true
+            },
+            { 
+                zh: "3. 並行處理：即便執行緒 2 正在忙碌，執行緒 1 仍能即時回應使用者的滑鼠點擊。", 
+                en: "3. Parallelism: Even while Thread 2 is busy, Thread 1 stays responsive to user clicks.",
+                act1: true, act2: true, work1: true, work2: true
+            },
+            { 
+                zh: "重置演譯。", en: "Resetting demo.",
+                act1: false, act2: false, work1: false, work2: false
+            }
+        ];
+
+        function nextStep() {
+            const current = scenario[step];
+            
+            if(current.act1) t1.classList.add('active'); else t1.classList.remove('active');
+            if(current.act2) t2.classList.add('active'); else t2.classList.remove('active');
+            if(current.work1) t1.classList.add('working'); else t1.classList.remove('working');
+            if(current.work2) t2.classList.add('working'); else t2.classList.remove('working');
+
+            info.innerHTML = `<div class="zh">${current.zh}</div><div class="en">${current.en}</div>`;
+            step = (step + 1) % scenario.length;
+        }
+
+        function toggleLang() { document.body.classList.toggle('active-en'); }
+    </script>
+</body>
+</html>

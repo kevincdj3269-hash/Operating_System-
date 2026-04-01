@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>CPU Burst & Scheduling Demo</title>
+    <style>
+        :root {
+            --cpu-clr: #e74c3c;
+            --io-clr: #3498db;
+            --ready-clr: #2ecc71;
+            --dark: #2c3e50;
+            --bg: #f4f7f6;
+        }
+
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { max-width: 900px; width: 100%; background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); }
+        
+        .controls { display: flex; justify-content: center; gap: 15px; margin-bottom: 25px; }
+        button { padding: 12px 24px; border-radius: 50px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .btn-step { background: var(--dark); color: white; }
+        .btn-lang { background: #fff; border: 2px solid var(--dark); color: var(--dark); }
+        button:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.15); }
+
+        /* 演譯畫布 */
+        .stage { position: relative; height: 350px; background: #fff; border: 2px solid #eee; border-radius: 15px; margin: 20px 0; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: space-around; }
+
+        .row { width: 90%; height: 60px; display: flex; align-items: center; gap: 10px; }
+        .label { width: 100px; font-weight: bold; font-size: 0.8rem; color: #777; }
+
+        /* 行程塊 */
+        .process-segment { 
+            height: 40px; border-radius: 5px; display: flex; align-items: center; justify-content: center; 
+            color: white; font-size: 0.7rem; font-weight: bold; opacity: 0; transition: 0.5s;
+        }
+        .cpu-burst { background: var(--cpu-clr); }
+        .io-burst { background: var(--io-clr); }
+        .active { opacity: 1; transform: scale(1.05); }
+
+        .info-box { background: #fff; padding: 20px; border-radius: 12px; border-left: 6px solid var(--dark); min-height: 100px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); font-size: 1.1rem; line-height: 1.6; width: 100%; box-sizing: border-box; }
+        
+        .en { display: none; }
+        .active-en .en { display: block; }
+        .active-en .zh { display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="container" id="app">
+        <div class="controls">
+            <button class="btn-step" onclick="nextStep()">STEP BY STEP / 下一步</button>
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文 切換</button>
+        </div>
+
+        <div class="stage">
+            <div class="row">
+                <div class="label">I/O-Bound Proc</div>
+                <div id="io1" class="process-segment cpu-burst" style="width: 40px;">CPU</div>
+                <div id="io2" class="process-segment io-burst" style="width: 150px;">I/O WAIT</div>
+                <div id="io3" class="process-segment cpu-burst" style="width: 30px;">CPU</div>
+            </div>
+            <div class="row">
+                <div class="label">CPU-Bound Proc</div>
+                <div id="cpu1" class="process-segment cpu-burst" style="width: 250px;">LONG CPU BURST</div>
+                <div id="cpu2" class="process-segment io-burst" style="width: 40px;">I/O</div>
+            </div>
+        </div>
+
+        <div class="info-box" id="info">
+            <div class="zh">初始狀態：行程由 CPU Burst 與 I/O Burst 交替組成。</div>
+            <div class="en">Initial: Processes consist of alternating CPU and I/O Bursts.</div>
+        </div>
+    </div>
+
+    <script>
+        let step = 0;
+        const info = document.getElementById('info');
+
+        const scenario = [
+            { ids: ['io1'], zh: "1. 短暴衝：多數行程（如 I/O-bound）只需極短的 CPU 時間。", en: "1. Short Burst: Most processes (I/O-bound) need very little CPU time." },
+            { ids: ['io1', 'io2'], zh: "2. I/O 等待：短暫運算後，行程進入長期的 I/O 等待狀態。", en: "2. I/O Wait: After brief computation, process enters long I/O wait state." },
+            { ids: ['io1', 'io2', 'cpu1'], zh: "3. 長暴衝：少數運算密集型行程會長時間佔用 CPU。", en: "3. Long Burst: A few computation-intensive processes occupy CPU for long periods." },
+            { ids: ['io1', 'io2', 'cpu1', 'io3', 'cpu2'], zh: "4. 分布特徵：系統中充滿了『大量短暴衝』與『極少量長暴衝』。", en: "4. Distribution: System is filled with many short bursts and very few long bursts." },
+            { ids: [], zh: "重置演譯。", en: "Resetting demo." }
+        ];
+
+        function nextStep() {
+            const data = scenario[step];
+            document.querySelectorAll('.process-segment').forEach(el => el.classList.remove('active'));
+            data.ids.forEach(id => document.getElementById(id).classList.add('active'));
+
+            info.innerHTML = `<div class="zh">${data.zh}</div><div class="en">${data.en}</div>`;
+            step = (step + 1) % scenario.length;
+        }
+
+        function toggleLang() { document.body.classList.toggle('active-en'); }
+    </script>
+</body>
+</html>

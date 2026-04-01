@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Medium-term Scheduler (Swapping) Demo</title>
+    <style>
+        :root {
+            --ram-clr: #2980b9;
+            --disk-clr: #7f8c8d;
+            --proc-clr: #e67e22;
+            --dark: #2c3e50;
+            --bg: #f4f7f6;
+        }
+
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { max-width: 900px; width: 100%; background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); }
+        
+        .controls { display: flex; justify-content: center; gap: 15px; margin-bottom: 30px; }
+        button { padding: 12px 24px; border-radius: 50px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .btn-step { background: var(--dark); color: white; }
+        .btn-lang { background: #fff; border: 2px solid var(--dark); color: var(--dark); }
+        button:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.15); }
+
+        /* 演譯區域 */
+        .stage { position: relative; height: 350px; background: #fff; border: 2px solid #eee; border-radius: 15px; margin: 20px 0; display: flex; justify-content: space-around; align-items: center; }
+
+        .storage-box { width: 250px; height: 250px; border: 3px solid #ddd; border-radius: 15px; position: relative; display: flex; flex-direction: column; align-items: center; gap: 15px; padding: 20px; }
+        .box-label { position: absolute; top: -12px; left: 20px; background: white; padding: 0 10px; font-weight: bold; font-size: 0.85rem; color: #7f8c8d; }
+        
+        #ram { border-color: var(--ram-clr); background-color: #f0f7ff; }
+        #disk { border-color: var(--disk-clr); background-color: #fcfcfc; }
+
+        /* 行程塊樣式 */
+        .proc-block {
+            width: 180px; height: 50px; border-radius: 10px; background: var(--proc-clr); color: white;
+            display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.9rem;
+            transition: all 0.8s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            position: relative;
+        }
+
+        .status-tag { position: absolute; bottom: -5px; right: 5px; font-size: 0.6rem; background: white; color: #333; padding: 2px 5px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+
+        /* 說明框 */
+        .info-box { background: #fff; padding: 20px; border-radius: 12px; border-left: 6px solid var(--dark); min-height: 100px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); font-size: 1.1rem; line-height: 1.6; width: 100%; box-sizing: border-box; }
+
+        .en { display: none; }
+        .active-en .en { display: block; }
+        .active-en .zh { display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="container" id="app">
+        <div class="controls">
+            <button class="btn-step" onclick="nextStep()">STEP BY STEP / 下一步</button>
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文 切換</button>
+        </div>
+
+        <div class="stage">
+            <div id="ram" class="storage-box">
+                <div class="box-label zh">主記憶體 (RAM)</div>
+                <div class="box-label en">Main Memory (RAM)</div>
+                <div id="p1" class="proc-block">Process A<span class="status-tag">Ready</span></div>
+                <div id="p2" class="proc-block">Process B<span class="status-tag">Blocked</span></div>
+            </div>
+
+            <div style="font-size: 2rem; color: #ccc;">⇄</div>
+
+            <div id="disk" class="storage-box">
+                <div class="box-label zh">磁碟 (置換空間)</div>
+                <div class="box-label en">Disk (Swap Space)</div>
+            </div>
+        </div>
+
+        <div class="info-box" id="info">
+            <div class="zh">初始狀態：記憶體已滿，包含就緒的行程 A 與等待中的行程 B。</div>
+            <div class="en">Initial: RAM is full, containing Ready Process A and Blocked Process B.</div>
+        </div>
+    </div>
+
+    <script>
+        let step = 0;
+        const info = document.getElementById('info');
+        const ram = document.getElementById('ram');
+        const disk = document.getElementById('disk');
+        const p2 = document.getElementById('p2');
+
+        const scenario = [
+            { 
+                action: 'swap-out', 
+                zh: "1. 中期排程 (置換出)：系統偵測到記憶體不足，決定將阻塞的『行程 B』移往磁碟以騰出空間。", 
+                en: "1. Medium-term Scheduling (Swap-out): System detects low memory and decides to move blocked 'Process B' to disk." 
+            },
+            { 
+                action: 'ram-free', 
+                zh: "2. 空間釋放：此時記憶體多工程度下降，系統運行變得順暢。", 
+                en: "2. Memory Freed: Multiprogramming level decreases, system runs more smoothly." 
+            },
+            { 
+                action: 'swap-in', 
+                zh: "3. 中期排程 (置換入)：行程 B 的事件完成並重新就緒。排程器將其置換回記憶體繼續執行。", 
+                en: "3. Medium-term Scheduling (Swap-in): Process B's event completes. Scheduler swaps it back to RAM." 
+            },
+            { action: 'reset', zh: "重置演譯。", en: "Resetting demo." }
+        ];
+
+        function nextStep() {
+            const current = scenario[step];
+            
+            if (current.action === 'swap-out') {
+                disk.appendChild(p2);
+                p2.querySelector('.status-tag').innerText = 'Suspended';
+                p2.style.opacity = '0.7';
+            } else if (current.action === 'swap-in') {
+                ram.appendChild(p2);
+                p2.querySelector('.status-tag').innerText = 'Ready';
+                p2.style.opacity = '1';
+            } else if (current.action === 'reset') {
+                location.reload();
+                return;
+            }
+
+            info.innerHTML = `<div class="zh">${current.zh}</div><div class="en">${current.en}</div>`;
+            step = (step + 1) % scenario.length;
+        }
+
+        function toggleLang() { document.body.classList.toggle('active-en'); }
+    </script>
+</body>
+</html>
