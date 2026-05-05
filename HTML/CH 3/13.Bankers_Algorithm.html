@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Banker's Algorithm Demo</title>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --success: #27ae60;
+            --danger: #e74c3c;
+            --warning: #f39c12;
+            --bg: #fdfdfd;
+            --table-border: #bdc3c7;
+        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, sans-serif; background: var(--bg); color: #333; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 100%; max-width: 900px; text-align: center; }
+        
+        .controls { display: flex; justify-content: center; gap: 15px; margin-bottom: 25px; flex-wrap: wrap; }
+        button { padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; font-size: 16px; color: white; }
+        .btn-lang { background: #34495e; }
+        .btn-next { background: var(--success); }
+        .btn-reset { background: #95a5a6; }
+        button:hover { filter: brightness(1.1); transform: translateY(-2px); }
+
+        .dashboard { display: flex; justify-content: center; gap: 30px; margin-bottom: 20px; align-items: stretch;}
+        
+        /* Table Styles */
+        table { border-collapse: collapse; width: 60%; font-size: 16px; background: white; }
+        th, td { border: 2px solid var(--table-border); padding: 12px; text-align: center; }
+        th { background-color: var(--primary); color: white; }
+        .row-active { background-color: #fcf3cf; border: 3px solid var(--warning) !important; font-weight: bold;}
+        .row-success { background-color: #d5f5e3; color: #1e8449; text-decoration: line-through;}
+        .row-fail { background-color: #fadbd8; color: var(--danger); }
+
+        /* Available Box */
+        .avail-box { background: #e8f4f8; border: 3px solid #3498db; border-radius: 10px; padding: 20px; display: flex; flex-direction: column; justify-content: center; align-items: center; width: 250px;}
+        .avail-title { font-weight: bold; font-size: 18px; color: #2980b9; margin-bottom: 10px; }
+        .avail-vals { font-size: 32px; font-weight: 900; color: #2c3e50; transition: color 0.3s; }
+        .val-update { color: var(--success); animation: pop 0.5s; }
+        @keyframes pop { 0% { transform: scale(1); } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
+
+        .desc-box { background: #f1f2f6; padding: 20px; border-radius: 10px; font-size: 17px; min-height: 100px; border-left: 6px solid var(--warning); text-align: left; line-height: 1.6; margin-top: 20px;}
+        .highlight { font-weight: bold; color: var(--danger); }
+        .highlight-green { font-weight: bold; color: var(--success); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 id="title">死結避免：銀行家演算法 (Banker's Algorithm)</h2>
+    
+    <div class="controls">
+        <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+        <button class="btn-next" onclick="nextStep()" id="btn-next">下一步 (Next)</button>
+        <button class="btn-reset" onclick="reset()" id="btn-reset">重置 (Reset)</button>
+    </div>
+
+    <div class="dashboard">
+        <table id="bank-table">
+            <thead>
+                <tr>
+                    <th id="th-proc">行程 (Process)</th>
+                    <th id="th-alloc">已分配 (Allocation)</th>
+                    <th id="th-max">最大需求 (Max)</th>
+                    <th id="th-need">尚需 (Need)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr id="r-p0"><td>P0</td><td>0, 1, 0</td><td>7, 5, 3</td><td>7, 4, 3</td></tr>
+                <tr id="r-p1"><td>P1</td><td>2, 0, 0</td><td>3, 2, 2</td><td>1, 2, 2</td></tr>
+                <tr id="r-p2"><td>P2</td><td>3, 0, 2</td><td>9, 0, 2</td><td>6, 0, 0</td></tr>
+                <tr id="r-p3"><td>P3</td><td>2, 1, 1</td><td>2, 2, 2</td><td>0, 1, 1</td></tr>
+                <tr id="r-p4"><td>P4</td><td>0, 0, 2</td><td>4, 3, 3</td><td>4, 3, 1</td></tr>
+            </tbody>
+        </table>
+
+        <div class="avail-box">
+            <div class="avail-title" id="avail-title">目前可用資源 (Available)</div>
+            <div class="avail-vals" id="avail-val">3, 3, 2</div>
+        </div>
+    </div>
+
+    <div class="desc-box" id="desc-text">
+        點擊「下一步」開始沙盤推演。尋找能讓所有行程完工的「安全順序 (Safe Sequence)」。
+    </div>
+</div>
+
+<script>
+    let lang = 'zh';
+    let step = 0;
+
+    const dict = {
+        zh: {
+            title: "死結避免：銀行家演算法 (Banker's Algorithm)",
+            next: "下一步 (Next)", reset: "重置 (Reset)",
+            thProc: "行程 (Process)", thAlloc: "已分配 (Allocation)", thMax: "最大需求 (Max)", thNeed: "尚需 (Need)",
+            availTitle: "目前可用資源 (Available)",
+            
+            s0: "點擊「下一步」開始沙盤推演。尋找能讓所有行程完工的「安全順序 (Safe Sequence)」。",
+            s1: "<b>檢查 P0：</b><br>P0 尚需 (7,4,3)。目前 Available 只有 (3,3,2)。<span class='highlight'>資源不足，P0 必須等待。</span>",
+            s2: "<b>檢查 P1：</b><br>P1 尚需 (1,2,2)。目前 Available (3,3,2) <span class='highlight-green'>足夠滿足！</span>",
+            s3: "<b>P1 完工並歸還資源：</b><br>P1 完工，歸還已分配的 (2,0,0)。<br>新的 Available = (3,3,2) + (2,0,0) = <span class='highlight-green'>(5,3,2)</span>。",
+            s4: "<b>檢查 P2：</b><br>P2 尚需 (6,0,0)。目前 Available (5,3,2)。<span class='highlight'>資源不足，P2 等待。</span>",
+            s5: "<b>檢查 P3：</b><br>P3 尚需 (0,1,1)。目前 Available (5,3,2) <span class='highlight-green'>足夠滿足！</span>",
+            s6: "<b>P3 完工並歸還資源：</b><br>P3 完工，歸還已分配的 (2,1,1)。<br>新的 Available = (5,3,2) + (2,1,1) = <span class='highlight-green'>(7,4,3)</span>。",
+            s7: "<b>檢查 P4：</b><br>P4 尚需 (4,3,1)。目前 Available (7,4,3) <span class='highlight-green'>足夠滿足！</span>",
+            s8: "<b>P4 完工並歸還資源：</b><br>P4 完工，歸還已分配的 (0,0,2)。<br>新的 Available = (7,4,3) + (0,0,2) = <span class='highlight-green'>(7,4,5)</span>。",
+            s9: "<b>第二輪掃描，檢查之前等待的 P0：</b><br>P0 尚需 (7,4,3)。目前 Available (7,4,5) <span class='highlight-green'>足夠滿足！</span>",
+            s10: "<b>P0 完工並歸還資源：</b><br>P0 完工，歸還已分配的 (0,1,0)。<br>新的 Available = (7,4,5) + (0,1,0) = <span class='highlight-green'>(7,5,5)</span>。",
+            s11: "<b>第二輪掃描，檢查最後的 P2：</b><br>P2 尚需 (6,0,0)。目前 Available (7,5,5) <span class='highlight-green'>足夠滿足！</span>",
+            s12: "<b>P2 完工並歸還資源：</b><br>P2 完工，歸還已分配的 (3,0,2)。<br>新的 Available = (7,5,5) + (3,0,2) = <span class='highlight-green'>(10,5,7)</span>。<br><b>結論：</b>所有行程皆順利完工！安全順序為 <P1, P3, P4, P0, P2>，系統處於<span class='highlight-green'>安全狀態 (Safe State)</span>！"
+        },
+        en: {
+            title: "Deadlock Avoidance: Banker's Algorithm",
+            next: "Next Step", reset: "Reset",
+            thProc: "Process", thAlloc: "Allocation", thMax: "Max", thNeed: "Need",
+            availTitle: "Available Resources",
+            
+            s0: "Click 'Next' to start the Safe State check. We need to find a 'Safe Sequence' for all processes.",
+            s1: "<b>Check P0:</b><br>P0 Needs (7,4,3). Available is only (3,3,2). <span class='highlight'>Not enough resources. P0 must wait.</span>",
+            s2: "<b>Check P1:</b><br>P1 Needs (1,2,2). Available (3,3,2) is <span class='highlight-green'>SUFFICIENT!</span>",
+            s3: "<b>P1 finishes and releases resources:</b><br>P1 returns its Allocated (2,0,0).<br>New Available = (3,3,2) + (2,0,0) = <span class='highlight-green'>(5,3,2)</span>.",
+            s4: "<b>Check P2:</b><br>P2 Needs (6,0,0). Available is (5,3,2). <span class='highlight'>Not enough resources. P2 must wait.</span>",
+            s5: "<b>Check P3:</b><br>P3 Needs (0,1,1). Available (5,3,2) is <span class='highlight-green'>SUFFICIENT!</span>",
+            s6: "<b>P3 finishes and releases resources:</b><br>P3 returns its Allocated (2,1,1).<br>New Available = (5,3,2) + (2,1,1) = <span class='highlight-green'>(7,4,3)</span>.",
+            s7: "<b>Check P4:</b><br>P4 Needs (4,3,1). Available (7,4,3) is <span class='highlight-green'>SUFFICIENT!</span>",
+            s8: "<b>P4 finishes and releases resources:</b><br>P4 returns its Allocated (0,0,2).<br>New Available = (7,4,3) + (0,0,2) = <span class='highlight-green'>(7,4,5)</span>.",
+            s9: "<b>Pass 2: Re-check waiting P0:</b><br>P0 Needs (7,4,3). Available (7,4,5) is now <span class='highlight-green'>SUFFICIENT!</span>",
+            s10: "<b>P0 finishes and releases resources:</b><br>P0 returns its Allocated (0,1,0).<br>New Available = (7,4,5) + (0,1,0) = <span class='highlight-green'>(7,5,5)</span>.",
+            s11: "<b>Pass 2: Re-check waiting P2:</b><br>P2 Needs (6,0,0). Available (7,5,5) is now <span class='highlight-green'>SUFFICIENT!</span>",
+            s12: "<b>P2 finishes and releases resources:</b><br>P2 returns its Allocated (3,0,2).<br>New Available = (7,5,5) + (3,0,2) = <span class='highlight-green'>(10,5,7)</span>.<br><b>Conclusion:</b> All processes finished! Safe Sequence: <P1, P3, P4, P0, P2>. System is in a <span class='highlight-green'>SAFE STATE</span>!"
+        }
+    };
+
+    function updateUI() {
+        document.getElementById('title').innerText = dict[lang].title;
+        document.getElementById('btn-next').innerText = dict[lang].next;
+        document.getElementById('btn-reset').innerText = dict[lang].reset;
+        document.getElementById('th-proc').innerText = dict[lang].thProc;
+        document.getElementById('th-alloc').innerText = dict[lang].thAlloc;
+        document.getElementById('th-max').innerText = dict[lang].thMax;
+        document.getElementById('th-need').innerText = dict[lang].thNeed;
+        document.getElementById('avail-title').innerText = dict[lang].availTitle;
+        
+        document.getElementById('desc-text').innerHTML = dict[lang]['s' + step];
+    }
+
+    function toggleLang() {
+        lang = lang === 'zh' ? 'en' : 'zh';
+        updateUI();
+    }
+
+    function clearRows() {
+        for(let i=0; i<=4; i++) {
+            let row = document.getElementById('r-p'+i);
+            row.classList.remove('row-active', 'row-fail');
+        }
+    }
+    
+    function setRow(pid, state) {
+        clearRows();
+        let row = document.getElementById('r-p'+pid);
+        row.classList.add('row-' + state);
+    }
+
+    function updateAvail(valStr) {
+        let el = document.getElementById('avail-val');
+        el.innerText = valStr;
+        el.classList.remove('val-update');
+        void el.offsetWidth; // trigger reflow
+        el.classList.add('val-update');
+    }
+
+    function reset() {
+        step = 0;
+        clearRows();
+        for(let i=0; i<=4; i++) {
+            document.getElementById('r-p'+i).classList.remove('row-success');
+        }
+        updateAvail("3, 3, 2");
+        updateUI();
+    }
+
+    function nextStep() {
+        if(step === 0) { step = 1; setRow(0, 'fail'); }
+        else if(step === 1) { step = 2; setRow(1, 'active'); }
+        else if(step === 2) { step = 3; setRow(1, 'success'); updateAvail("5, 3, 2"); }
+        else if(step === 3) { step = 4; setRow(2, 'fail'); }
+        else if(step === 4) { step = 5; setRow(3, 'active'); }
+        else if(step === 5) { step = 6; setRow(3, 'success'); updateAvail("7, 4, 3"); }
+        else if(step === 6) { step = 7; setRow(4, 'active'); }
+        else if(step === 7) { step = 8; setRow(4, 'success'); updateAvail("7, 4, 5"); }
+        else if(step === 8) { step = 9; setRow(0, 'active'); }
+        else if(step === 9) { step = 10; setRow(0, 'success'); updateAvail("7, 5, 5"); }
+        else if(step === 10) { step = 11; setRow(2, 'active'); }
+        else if(step === 11) { step = 12; setRow(2, 'success'); updateAvail("10, 5, 7"); clearRows();}
+        else { reset(); return; }
+        
+        updateUI();
+    }
+
+    updateUI();
+</script>
+
+</body>
+</html>

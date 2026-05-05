@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dining Philosophers Problem</title>
+    <style>
+        :root {
+            --think: #3498db;
+            --hungry: #f39c12;
+            --eat: #2ecc71;
+            --table: #ecf0f1;
+            --chopstick: #c0392b;
+            --bg: #f8f9fa;
+            --text: #2c3e50;
+        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        .container { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 100%; max-width: 850px; text-align: center; }
+        
+        .controls { margin-bottom: 25px; display: flex; justify-content: center; gap: 15px; flex-wrap: wrap; }
+        button { padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; font-size: 15px; color: white; }
+        .btn-lang { background: #34495e; }
+        .btn-next { background: #e74c3c; }
+        .btn-reset { background: #95a5a6; }
+        button:hover { filter: brightness(1.1); transform: translateY(-2px); }
+
+        .stage { height: 400px; position: relative; background: #fff; border: 2px dashed #bdc3c7; border-radius: 12px; margin-bottom: 25px; overflow: hidden; display: flex; justify-content: center; align-items: center; }
+        
+        .table { width: 200px; height: 200px; background: var(--table); border-radius: 50%; border: 8px solid #bdc3c7; position: absolute; box-shadow: inset 0 0 20px rgba(0,0,0,0.05); }
+        .dish { width: 80px; height: 80px; background: #fff; border-radius: 50%; position: absolute; border: 4px solid #f1c40f; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center; font-size: 30px; }
+
+        .philosopher { width: 70px; height: 70px; background: var(--think); border-radius: 50%; position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.2); transition: all 0.5s; z-index: 10; font-size: 14px; }
+        
+        /* Positions calculated for a circle */
+        #p0 { top: 20px; left: calc(50% - 35px); }
+        #p1 { top: 110px; right: 80px; }
+        #p2 { bottom: 40px; right: 150px; }
+        #p3 { bottom: 40px; left: 150px; }
+        #p4 { top: 110px; left: 80px; }
+
+        .chopstick { width: 6px; height: 40px; background: var(--chopstick); border-radius: 3px; position: absolute; transition: all 0.5s ease; z-index: 5; box-shadow: 2px 2px 5px rgba(0,0,0,0.2); }
+        
+        /* Initial Chopstick positions on table */
+        #c0 { top: 90px; left: calc(50% - 60px); transform: rotate(36deg); }  /* between P4 & P0 */
+        #c1 { top: 90px; right: calc(50% - 60px); transform: rotate(-36deg); } /* between P0 & P1 */
+        #c2 { top: 210px; right: calc(50% - 80px); transform: rotate(-108deg); }/* between P1 & P2 */
+        #c3 { bottom: 90px; left: calc(50% - 3px); transform: rotate(0deg); }  /* between P2 & P3 */
+        #c4 { top: 210px; left: calc(50% - 80px); transform: rotate(108deg); } /* between P3 & P4 */
+
+        .desc-box { background: #fdf2e9; padding: 20px; border-radius: 10px; font-size: 17px; min-height: 90px; border-left: 6px solid #e67e22; text-align: left; line-height: 1.6; }
+        .highlight-red { color: #c0392b; font-weight: bold; }
+        .highlight-green { color: #27ae60; font-weight: bold; }
+        
+        .deadlock-anim { animation: shake 0.5s infinite; background: #e74c3c !important; }
+        @keyframes shake { 0% { transform: translateX(0); } 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } 100% { transform: translateX(0); } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 id="title">哲學家的晚餐問題 (Dining Philosophers)</h2>
+    
+    <div class="controls">
+        <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+        <button class="btn-next" onclick="nextStep()" id="btn-next">下一步 (Next)</button>
+        <button class="btn-reset" onclick="reset()" id="btn-reset">重置 (Reset)</button>
+    </div>
+
+    <div class="stage">
+        <div class="table"></div>
+        <div class="dish">🍚</div>
+
+        <!-- Philosophers -->
+        <div class="philosopher" id="p0">P0<br><small id="s0">Think</small></div>
+        <div class="philosopher" id="p1">P1<br><small id="s1">Think</small></div>
+        <div class="philosopher" id="p2">P2<br><small id="s2">Think</small></div>
+        <div class="philosopher" id="p3">P3<br><small id="s3">Think</small></div>
+        <div class="philosopher" id="p4">P4<br><small id="s4">Think</small></div>
+
+        <!-- Chopsticks -->
+        <div class="chopstick" id="c0"></div>
+        <div class="chopstick" id="c1"></div>
+        <div class="chopstick" id="c2"></div>
+        <div class="chopstick" id="c3"></div>
+        <div class="chopstick" id="c4"></div>
+    </div>
+
+    <div class="desc-box" id="desc-text">
+        點擊「下一步」開始。初始狀態：所有哲學家都在思考 (Thinking)，筷子放在桌上。
+    </div>
+</div>
+
+<script>
+    let lang = 'zh';
+    let step = 0;
+
+    const dict = {
+        zh: {
+            title: "哲學家的晚餐問題 (Dining Philosophers Problem)", next: "下一步 (Next)", reset: "重置 (Reset)",
+            think: "Think", hungry: "Hungry", eat: "Eat", dead: "BLOCKED",
+            s0: "點擊「下一步」開始。初始狀態：所有哲學家都在思考 (Thinking)，筷子放在桌上。",
+            s1: "<b>步驟 1：正常進食</b><br>P0 肚子餓了 (Hungry)。他先拿起左手邊的筷子 (C0)，再拿起右手邊的筷子 (C1)。湊齊一雙！",
+            s2: "<b>步驟 2：開始吃飯</b><br>P0 進入進食狀態 (<span class='highlight-green'>Eating</span>)。其他哲學家繼續思考。",
+            s3: "<b>步驟 3：吃飽放下</b><br>P0 吃飽了，放下 C0 和 C1 筷子，回到思考狀態 (Thinking)。",
+            s4: "<b>步驟 4：災難前夕</b><br>突然間，5 位哲學家<span class='highlight-red'>在同一個瞬間都肚子餓了！</span>大家同時準備拿筷子。",
+            s5: "<b>步驟 5：大家各拿一支</b><br>每個人都成功拿起了自己「左手邊」的筷子！此時桌上已經沒有任何筷子了。",
+            s6: "<b>步驟 6：死結 (DEADLOCK)</b><br>每個人都想拿「右手邊」的筷子，但發現都被旁邊的人拿走了。大家互相等待對方放下筷子，系統永久卡死！這就是<span class='highlight-red'>死結</span>。"
+        },
+        en: {
+            title: "Dining Philosophers Problem", next: "Next Step", reset: "Reset",
+            think: "Think", hungry: "Hungry", eat: "Eat", dead: "BLOCKED",
+            s0: "Click 'Next' to start. Initial state: All philosophers are Thinking. Chopsticks are on the table.",
+            s1: "<b>Step 1: Normal Eating</b><br>P0 gets Hungry. He picks up his left chopstick (C0), then his right chopstick (C1). Got a pair!",
+            s2: "<b>Step 2: Start Eating</b><br>P0 enters the <span class='highlight-green'>Eating</span> state. Others continue thinking.",
+            s3: "<b>Step 3: Finished</b><br>P0 finishes eating, drops C0 and C1, and goes back to Thinking.",
+            s4: "<b>Step 4: The Setup</b><br>Suddenly, all 5 philosophers <span class='highlight-red'>get Hungry at the exact same time!</span> Everyone reaches for a chopstick.",
+            s5: "<b>Step 5: One for Everyone</b><br>Everyone successfully picks up their LEFT chopstick! The table is now empty.",
+            s6: "<b>Step 6: DEADLOCK!</b><br>Everyone tries to pick up their RIGHT chopstick, but it's held by their neighbor. They all wait indefinitely. The system is in a <span class='highlight-red'>DEADLOCK</span>."
+        }
+    };
+
+    function updateUI() {
+        document.getElementById('title').innerText = dict[lang].title;
+        document.getElementById('btn-next').innerText = dict[lang].next;
+        document.getElementById('btn-reset').innerText = dict[lang].reset;
+        document.getElementById('desc-text').innerHTML = dict[lang]['s' + step];
+    }
+
+    function toggleLang() {
+        lang = lang === 'zh' ? 'en' : 'zh';
+        updateUI();
+        updateLabels(); // Refresh stat labels dynamically
+    }
+
+    function setState(pid, stateCode) {
+        let p = document.getElementById('p' + pid);
+        let s = document.getElementById('s' + pid);
+        p.classList.remove('deadlock-anim');
+        
+        if(stateCode === 'think') {
+            p.style.background = "var(--think)";
+            s.innerText = dict[lang].think;
+        } else if(stateCode === 'hungry') {
+            p.style.background = "var(--hungry)";
+            s.innerText = dict[lang].hungry;
+        } else if(stateCode === 'eat') {
+            p.style.background = "var(--eat)";
+            s.innerText = dict[lang].eat;
+        } else if(stateCode === 'dead') {
+            p.classList.add('deadlock-anim');
+            s.innerText = dict[lang].dead;
+        }
+    }
+
+    function updateLabels() {
+        // Just forces label refresh without changing colors during lang switch
+        for(let i=0; i<5; i++){
+            let s = document.getElementById('s'+i).innerText;
+            if(s.includes("Think") || s.includes("思考")) setState(i, 'think');
+            else if(s.includes("Hung") || s.includes("餓")) setState(i, 'hungry');
+            else if(s.includes("Eat") || s.includes("吃")) setState(i, 'eat');
+            else if(s.includes("BLOCK") || s.includes("死")) setState(i, 'dead');
+        }
+    }
+
+    function moveChopstick(cid, toPid, side) {
+        let c = document.getElementById('c' + cid);
+        // Default positions
+        const defs = [
+            {t: '90px', l: 'calc(50% - 60px)', r: 'auto', b: 'auto', rot: '36deg'},
+            {t: '90px', l: 'auto', r: 'calc(50% - 60px)', b: 'auto', rot: '-36deg'},
+            {t: '210px', l: 'auto', r: 'calc(50% - 80px)', b: 'auto', rot: '-108deg'},
+            {t: 'auto', l: 'calc(50% - 3px)', r: 'auto', b: '90px', rot: '0deg'},
+            {t: '210px', l: 'calc(50% - 80px)', r: 'auto', b: 'auto', rot: '108deg'}
+        ];
+
+        if(toPid === null) {
+            // Reset to table
+            c.style.top = defs[cid].t;
+            c.style.left = defs[cid].l;
+            c.style.right = defs[cid].r;
+            c.style.bottom = defs[cid].b;
+            c.style.transform = `rotate(${defs[cid].rot})`;
+            return;
+        }
+
+        // Move to hands (Approximated offsets for visual)
+        if(toPid === 0) {
+            if(side==='left') { c.style.top='50px'; c.style.left='calc(50% - 40px)'; c.style.transform='rotate(45deg)'; }
+            if(side==='right') { c.style.top='50px'; c.style.left='calc(50% + 35px)'; c.style.right='auto'; c.style.transform='rotate(-45deg)'; }
+        }
+        else if(toPid === 1) {
+            if(side==='left') { c.style.top='110px'; c.style.right='130px'; c.style.left='auto'; c.style.transform='rotate(-45deg)'; }
+        }
+        else if(toPid === 2) {
+            if(side==='left') { c.style.bottom='90px'; c.style.right='150px'; c.style.top='auto'; c.style.left='auto'; c.style.transform='rotate(-135deg)'; }
+        }
+        else if(toPid === 3) {
+            if(side==='left') { c.style.bottom='40px'; c.style.left='140px'; c.style.top='auto'; c.style.right='auto'; c.style.transform='rotate(90deg)'; }
+        }
+        else if(toPid === 4) {
+            if(side==='left') { c.style.top='110px'; c.style.left='60px'; c.style.right='auto'; c.style.transform='rotate(45deg)'; }
+        }
+    }
+
+    function reset() {
+        step = 0;
+        for(let i=0; i<5; i++) {
+            setState(i, 'think');
+            moveChopstick(i, null, null);
+        }
+        updateUI();
+    }
+
+    function nextStep() {
+        if(step === 0) {
+            step = 1;
+            setState(0, 'hungry');
+            moveChopstick(0, 0, 'left');
+            setTimeout(()=> moveChopstick(1, 0, 'right'), 400);
+        } else if(step === 1) {
+            step = 2;
+            setState(0, 'eat');
+        } else if(step === 2) {
+            step = 3;
+            setState(0, 'think');
+            moveChopstick(0, null, null);
+            moveChopstick(1, null, null);
+        } else if(step === 3) {
+            step = 4;
+            for(let i=0; i<5; i++) setState(i, 'hungry');
+        } else if(step === 4) {
+            step = 5;
+            // Everyone grabs left
+            moveChopstick(0, 0, 'left');
+            moveChopstick(1, 1, 'left');
+            moveChopstick(2, 2, 'left');
+            moveChopstick(3, 3, 'left');
+            moveChopstick(4, 4, 'left');
+        } else if(step === 5) {
+            step = 6;
+            for(let i=0; i<5; i++) setState(i, 'dead');
+        } else {
+            reset();
+            return;
+        }
+        updateUI();
+    }
+
+    updateUI();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPC Design: Buffering & Synchronization</title>
+    <style>
+        :root {
+            --sender: #e67e22;
+            --receiver: #27ae60;
+            --buffer: #34495e;
+            --msg: #f1c40f;
+            --bg: #f4f6f7;
+            --text: #2c3e50;
+            --danger: #e74c3c;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        .btn-lang { background: #95a5a6; color: white; }
+        .btn-action { background: var(--sender); color: white; }
+        button:hover { filter: brightness(1.1); transform: translateY(-2px); }
+
+        .stage {
+            height: 350px;
+            position: relative;
+            background: #fafafa;
+            border: 2px dashed #bdc3c7;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .process {
+            width: 120px;
+            height: 100px;
+            position: absolute;
+            top: 50px;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        #sender { left: 40px; background: var(--sender); }
+        #receiver { right: 40px; background: var(--receiver); }
+
+        .buffer-zone {
+            width: 180px;
+            height: 80px;
+            position: absolute;
+            left: 50%;
+            top: 60px;
+            transform: translateX(-50%);
+            border: 3px solid var(--buffer);
+            border-radius: 5px;
+            display: flex;
+            padding: 5px;
+            gap: 5px;
+            background: #ecf0f1;
+        }
+        .buffer-slot {
+            flex: 1;
+            border: 2px dashed #bdc3c7;
+            border-radius: 3px;
+        }
+        .buffer-label {
+            position: absolute;
+            top: 150px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-weight: bold;
+            color: var(--buffer);
+        }
+
+        .packet {
+            width: 40px;
+            height: 40px;
+            background: var(--msg);
+            border-radius: 50%;
+            position: absolute;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #333;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            transition: all 0.8s cubic-bezier(0.25, 0.8, 0.25, 1);
+            opacity: 0;
+            z-index: 10;
+        }
+
+        /* Initial positions for packets inside sender */
+        #p1, #p2, #p3 { top: 80px; left: 80px; }
+
+        .desc-box {
+            background: #eef2f7;
+            padding: 20px;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            min-height: 80px;
+            border-left: 5px solid var(--sender);
+        }
+
+        .status-badge {
+            font-size: 0.8rem;
+            background: rgba(0,0,0,0.2);
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 id="title" style="text-align: center; margin-bottom: 20px;">IPC 設計考量：有限緩衝區與阻塞機制</h2>
+    
+    <div class="controls">
+        <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+        <button class="btn-action" onclick="nextStep()" id="btn-next">下一步 (Next)</button>
+        <button class="btn-lang" onclick="reset()">重置 (Reset)</button>
+    </div>
+
+    <div class="stage">
+        <div class="process" id="sender">
+            <span id="label-sender">發送者</span>
+            <div class="status-badge" id="status-sender">Active</div>
+        </div>
+        
+        <div class="buffer-zone">
+            <div class="buffer-slot"></div>
+            <div class="buffer-slot"></div>
+        </div>
+        <div class="buffer-label" id="label-buffer">緩衝區 (容量: 2)</div>
+
+        <div class="packet" id="p1">1</div>
+        <div class="packet" id="p2">2</div>
+        <div class="packet" id="p3">3</div>
+
+        <div class="process" id="receiver">
+            <span id="label-receiver">接收者</span>
+            <div class="status-badge">Idle</div>
+        </div>
+    </div>
+
+    <div class="desc-box" id="description">
+        點擊「下一步」開始。觀察當緩衝區滿載時，作業系統如何處理發送者的行為。
+    </div>
+</div>
+
+<script>
+    let lang = 'zh';
+    let step = 0;
+
+    const dict = {
+        zh: {
+            title: "IPC 設計考量：有限緩衝區與阻塞機制",
+            next: "下一步 (Next)",
+            sender: "發送者",
+            receiver: "接收者",
+            buf: "作業系統緩衝區 (容量: 2)",
+            active: "執行中 (Active)",
+            blocked: "阻塞中 (Blocked)",
+            s0: "點擊「下一步」開始。我們設定緩衝區容量為 2，並採用「阻塞發送」設計。",
+            s1: "步驟 1：發送者送出「訊息 1」。緩衝區未滿，發送者繼續執行。",
+            s2: "步驟 2：發送者送出「訊息 2」。此時緩衝區已滿載 (2/2)。",
+            s3: "步驟 3 (關鍵考量)：發送者試圖送出「訊息 3」。因為緩衝區已滿，OS 介入將發送者設為「阻塞 (Blocked)」狀態並進入睡眠。",
+            s4: "步驟 4：接收者讀取「訊息 1」。緩衝區釋出空間！OS 喚醒發送者，發送者成功送出「訊息 3」。"
+        },
+        en: {
+            title: "IPC Design: Bounded Buffer & Blocking",
+            next: "Next Step",
+            sender: "Sender",
+            receiver: "Receiver",
+            buf: "OS Buffer (Capacity: 2)",
+            active: "Active",
+            blocked: "Blocked",
+            s0: "Click 'Next' to start. Buffer capacity is 2, using 'Blocking Send' design.",
+            s1: "Step 1: Sender sends 'Msg 1'. Buffer is not full, sender continues executing.",
+            s2: "Step 2: Sender sends 'Msg 2'. The buffer is now completely FULL (2/2).",
+            s3: "Step 3 (Key Concept): Sender tries to send 'Msg 3'. Since buffer is full, OS intervenes and puts Sender into 'Blocked' (sleep) state.",
+            s4: "Step 4: Receiver reads 'Msg 1'. Space freed! OS wakes up Sender, and 'Msg 3' is finally sent into the buffer."
+        }
+    };
+
+    function updateText() {
+        document.getElementById('title').innerText = dict[lang].title;
+        document.getElementById('btn-next').innerText = dict[lang].next;
+        document.getElementById('label-sender').innerText = dict[lang].sender;
+        document.getElementById('label-receiver').innerText = dict[lang].receiver;
+        document.getElementById('label-buffer').innerText = dict[lang].buf;
+        
+        const desc = document.getElementById('description');
+        if (step === 0) desc.innerText = dict[lang].s0;
+        else if (step === 1) desc.innerText = dict[lang].s1;
+        else if (step === 2) desc.innerText = dict[lang].s2;
+        else if (step === 3) desc.innerText = dict[lang].s3;
+        else if (step === 4) desc.innerText = dict[lang].s4;
+
+        // Update status translation if needed
+        const senderStatus = document.getElementById('status-sender');
+        if(senderStatus.innerText === 'Blocked' || senderStatus.innerText === '阻塞中 (Blocked)') {
+            senderStatus.innerText = dict[lang].blocked;
+        } else {
+            senderStatus.innerText = dict[lang].active;
+        }
+    }
+
+    function toggleLang() {
+        lang = lang === 'zh' ? 'en' : 'zh';
+        updateText();
+    }
+
+    function reset() {
+        step = 0;
+        ['p1', 'p2', 'p3'].forEach(id => {
+            let el = document.getElementById(id);
+            el.style.opacity = '0';
+            el.style.left = '80px';
+            el.style.top = '80px';
+        });
+        
+        const sender = document.getElementById('sender');
+        sender.style.background = 'var(--sender)';
+        document.getElementById('status-sender').innerText = dict[lang].active;
+        
+        updateText();
+    }
+
+    function nextStep() {
+        if (step === 0) {
+            step = 1;
+            let p1 = document.getElementById('p1');
+            p1.style.opacity = '1';
+            // Move to first buffer slot
+            p1.style.left = 'calc(50% - 40px)';
+            p1.style.top = '80px';
+        } 
+        else if (step === 1) {
+            step = 2;
+            let p2 = document.getElementById('p2');
+            p2.style.opacity = '1';
+            // Move to second buffer slot
+            p2.style.left = 'calc(50% + 45px)';
+            p2.style.top = '80px';
+        }
+        else if (step === 2) {
+            step = 3;
+            let p3 = document.getElementById('p3');
+            p3.style.opacity = '1';
+            // Try to move but stuck outside buffer
+            p3.style.left = '220px';
+            
+            // Turn sender red (blocked)
+            const sender = document.getElementById('sender');
+            sender.style.background = 'var(--danger)';
+            document.getElementById('status-sender').innerText = dict[lang].blocked;
+        }
+        else if (step === 3) {
+            step = 4;
+            let p1 = document.getElementById('p1');
+            // Receiver takes p1
+            p1.style.left = 'calc(100% - 100px)';
+            
+            // P3 enters the buffer
+            setTimeout(() => {
+                let p3 = document.getElementById('p3');
+                p3.style.left = 'calc(50% - 40px)';
+                
+                // Wake up sender
+                const sender = document.getElementById('sender');
+                sender.style.background = 'var(--sender)';
+                document.getElementById('status-sender').innerText = dict[lang].active;
+            }, 600);
+        }
+        else {
+            reset();
+            return;
+        }
+        updateText();
+    }
+
+    updateText();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bounded-Buffer Problem</title>
+    <style>
+        :root {
+            --producer: #2980b9;
+            --consumer: #8e44ad;
+            --buffer-bg: #ecf0f1;
+            --buffer-border: #bdc3c7;
+            --item: #f1c40f;
+            --danger: #e74c3c;
+            --text: #2c3e50;
+            --bg: #fdfdfd;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            width: 100%;
+            max-width: 900px;
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .controls {
+            margin-bottom: 25px;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 16px;
+            transition: all 0.2s;
+            color: white;
+        }
+        .btn-lang { background: #34495e; }
+        .btn-prod { background: var(--producer); }
+        .btn-cons { background: var(--consumer); }
+        .btn-reset { background: #95a5a6; }
+        button:hover { filter: brightness(1.1); transform: translateY(-2px); }
+        button:active { transform: translateY(0); }
+
+        .dashboard {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        .semaphore {
+            background: #f8f9fa;
+            border: 2px solid var(--buffer-border);
+            border-radius: 10px;
+            padding: 15px 25px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .sem-val { color: var(--danger); font-size: 24px; margin-left: 10px; }
+
+        .stage {
+            height: 250px;
+            position: relative;
+            background: #fafbfc;
+            border: 2px dashed var(--buffer-border);
+            border-radius: 12px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 40px;
+        }
+
+        .actor {
+            width: 100px;
+            height: 100px;
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            transition: 0.3s;
+            position: relative;
+        }
+        .actor.blocked {
+            background: var(--danger) !important;
+            animation: shake 0.5s;
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        #producer { background: var(--producer); }
+        #consumer { background: var(--consumer); }
+        .blocked-label {
+            position: absolute;
+            top: -30px;
+            color: var(--danger);
+            font-size: 14px;
+            font-weight: bold;
+            opacity: 0;
+            transition: 0.3s;
+        }
+        .actor.blocked .blocked-label { opacity: 1; }
+
+        .buffer {
+            display: flex;
+            gap: 10px;
+            background: var(--buffer-bg);
+            padding: 15px;
+            border-radius: 10px;
+            border: 3px solid #7f8c8d;
+        }
+        .slot {
+            width: 50px;
+            height: 50px;
+            background: white;
+            border: 2px dashed #95a5a6;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: 0.3s;
+        }
+        .item {
+            width: 35px;
+            height: 35px;
+            background: var(--item);
+            border-radius: 50%;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+            animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        @keyframes popIn {
+            0% { transform: scale(0); }
+            100% { transform: scale(1); }
+        }
+
+        .log-box {
+            background: #eef2f7;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: left;
+            border-left: 6px solid var(--producer);
+            font-size: 16px;
+            line-height: 1.6;
+            min-height: 80px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 id="title">有限緩衝區問題 (Bounded-Buffer Problem)</h2>
+    
+    <div class="controls">
+        <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+        <button class="btn-prod" onclick="produce()">1. 生產 (Produce)</button>
+        <button class="btn-cons" onclick="consume()">2. 消費 (Consume)</button>
+        <button class="btn-reset" onclick="reset()">重置 (Reset)</button>
+    </div>
+
+    <div class="dashboard">
+        <div class="semaphore">Empty (空位): <span class="sem-val" id="val-empty">5</span></div>
+        <div class="semaphore">Full (資料): <span class="sem-val" id="val-full">0</span></div>
+        <div class="semaphore">Mutex (鎖): <span class="sem-val" id="val-mutex">1</span></div>
+    </div>
+
+    <div class="stage">
+        <div class="actor" id="producer">
+            <span id="label-prod">生產者</span>
+            <div class="blocked-label" id="block-prod">BLOCKED (緩衝區已滿)</div>
+        </div>
+        
+        <div class="buffer" id="buffer-container">
+            <div class="slot" id="slot-0"></div>
+            <div class="slot" id="slot-1"></div>
+            <div class="slot" id="slot-2"></div>
+            <div class="slot" id="slot-3"></div>
+            <div class="slot" id="slot-4"></div>
+        </div>
+
+        <div class="actor" id="consumer">
+            <span id="label-cons">消費者</span>
+            <div class="blocked-label" id="block-cons">BLOCKED (緩衝區為空)</div>
+        </div>
+    </div>
+
+    <div class="log-box" id="log-text">
+        點擊「生產」或「消費」開始演繹。緩衝區大小為 5。
+    </div>
+</div>
+
+<script>
+    let lang = 'zh';
+    const N = 5;
+    let empty = 5;
+    let full = 0;
+    let inIdx = 0;
+    let outIdx = 0;
+    let bufferArray = [null, null, null, null, null];
+
+    const dict = {
+        zh: {
+            title: "有限緩衝區問題 (Bounded-Buffer Problem)",
+            prodBtn: "1. 生產 (Produce)", consBtn: "2. 消費 (Consume)", resetBtn: "重置 (Reset)",
+            prodLabel: "生產者", consLabel: "消費者",
+            blockProd: "BLOCKED (緩衝區已滿)", blockCons: "BLOCKED (緩衝區為空)",
+            initLog: "點擊「生產」或「消費」開始演繹。緩衝區大小為 5。",
+            prodSuccess: "<b>生產成功：</b><br>1. Wait(Empty) ➡️ Empty 減 1<br>2. Wait(Mutex) ➡️ 取得鎖<br>3. 放入資料<br>4. Signal(Mutex) ➡️ 釋放鎖<br>5. Signal(Full) ➡️ Full 加 1",
+            consSuccess: "<b>消費成功：</b><br>1. Wait(Full) ➡️ Full 減 1<br>2. Wait(Mutex) ➡️ 取得鎖<br>3. 取出資料<br>4. Signal(Mutex) ➡️ 釋放鎖<br>5. Signal(Empty) ➡️ Empty 加 1",
+            prodFail: "<b>生產失敗 (Blocked)：</b><br>Empty = 0。緩衝區已滿，生產者被迫進入睡眠佇列，等待消費者取出資料。",
+            consFail: "<b>消費失敗 (Blocked)：</b><br>Full = 0。緩衝區為空，消費者被迫進入睡眠佇列，等待生產者放入資料。"
+        },
+        en: {
+            title: "Bounded-Buffer Problem (Producer-Consumer)",
+            prodBtn: "1. Produce", consBtn: "2. Consume", resetBtn: "Reset",
+            prodLabel: "Producer", consLabel: "Consumer",
+            blockProd: "BLOCKED (Buffer is Full)", blockCons: "BLOCKED (Buffer is Empty)",
+            initLog: "Click 'Produce' or 'Consume' to start. Buffer size is 5.",
+            prodSuccess: "<b>Produce Success:</b><br>1. Wait(Empty) ➡️ Empty - 1<br>2. Wait(Mutex) ➡️ Lock Acquired<br>3. Item Inserted<br>4. Signal(Mutex) ➡️ Lock Released<br>5. Signal(Full) ➡️ Full + 1",
+            consSuccess: "<b>Consume Success:</b><br>1. Wait(Full) ➡️ Full - 1<br>2. Wait(Mutex) ➡️ Lock Acquired<br>3. Item Removed<br>4. Signal(Mutex) ➡️ Lock Released<br>5. Signal(Empty) ➡️ Empty + 1",
+            prodFail: "<b>Produce Failed (Blocked):</b><br>Empty = 0. Buffer is full. Producer goes to sleep queue, waiting for consumer.",
+            consFail: "<b>Consume Failed (Blocked):</b><br>Full = 0. Buffer is empty. Consumer goes to sleep queue, waiting for producer."
+        }
+    };
+
+    function updateUI() {
+        document.getElementById('title').innerText = dict[lang].title;
+        document.querySelector('.btn-prod').innerText = dict[lang].prodBtn;
+        document.querySelector('.btn-cons').innerText = dict[lang].consBtn;
+        document.querySelector('.btn-reset').innerText = dict[lang].resetBtn;
+        document.getElementById('label-prod').innerText = dict[lang].prodLabel;
+        document.getElementById('label-cons').innerText = dict[lang].consLabel;
+        document.getElementById('block-prod').innerText = dict[lang].blockProd;
+        document.getElementById('block-cons').innerText = dict[lang].blockCons;
+        
+        document.getElementById('val-empty').innerText = empty;
+        document.getElementById('val-full').innerText = full;
+    }
+
+    function toggleLang() {
+        lang = lang === 'zh' ? 'en' : 'zh';
+        updateUI();
+        if(empty === 5 && full === 0) {
+            document.getElementById('log-text').innerHTML = dict[lang].initLog;
+        }
+    }
+
+    function produce() {
+        let p = document.getElementById('producer');
+        let c = document.getElementById('consumer');
+        c.classList.remove('blocked'); // Unblock consumer if it was blocked
+
+        if (empty > 0) {
+            p.classList.remove('blocked');
+            
+            // Logic
+            empty--;
+            full++;
+            
+            // Visuals
+            let slot = document.getElementById('slot-' + inIdx);
+            slot.innerHTML = '<div class="item"></div>';
+            
+            inIdx = (inIdx + 1) % N;
+            
+            document.getElementById('val-empty').innerText = empty;
+            document.getElementById('val-full').innerText = full;
+            document.getElementById('log-text').innerHTML = dict[lang].prodSuccess;
+            document.getElementById('log-text').style.borderLeftColor = "var(--producer)";
+        } else {
+            // Blocked
+            p.classList.add('blocked');
+            document.getElementById('log-text').innerHTML = dict[lang].prodFail;
+            document.getElementById('log-text').style.borderLeftColor = "var(--danger)";
+        }
+    }
+
+    function consume() {
+        let p = document.getElementById('producer');
+        let c = document.getElementById('consumer');
+        p.classList.remove('blocked'); // Unblock producer if it was blocked
+
+        if (full > 0) {
+            c.classList.remove('blocked');
+            
+            // Logic
+            full--;
+            empty++;
+            
+            // Visuals
+            let slot = document.getElementById('slot-' + outIdx);
+            slot.innerHTML = ''; // Remove item
+            
+            outIdx = (outIdx + 1) % N;
+            
+            document.getElementById('val-empty').innerText = empty;
+            document.getElementById('val-full').innerText = full;
+            document.getElementById('log-text').innerHTML = dict[lang].consSuccess;
+            document.getElementById('log-text').style.borderLeftColor = "var(--consumer)";
+        } else {
+            // Blocked
+            c.classList.add('blocked');
+            document.getElementById('log-text').innerHTML = dict[lang].consFail;
+            document.getElementById('log-text').style.borderLeftColor = "var(--danger)";
+        }
+    }
+
+    function reset() {
+        empty = 5;
+        full = 0;
+        inIdx = 0;
+        outIdx = 0;
+        document.getElementById('producer').classList.remove('blocked');
+        document.getElementById('consumer').classList.remove('blocked');
+        
+        for(let i=0; i<N; i++) {
+            document.getElementById('slot-' + i).innerHTML = '';
+        }
+        
+        document.getElementById('log-text').innerHTML = dict[lang].initLog;
+        document.getElementById('log-text').style.borderLeftColor = "var(--producer)";
+        updateUI();
+    }
+
+    updateUI();
+</script>
+
+</body>
+</html>

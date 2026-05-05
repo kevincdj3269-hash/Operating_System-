@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OS Critical Section: Method 2</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, sans-serif; background-color: #f8f9fa; color: #2c3e50; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 100%; max-width: 850px; text-align: center; }
+        .controls { margin-bottom: 25px; display: flex; justify-content: center; gap: 15px; }
+        button { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.3s; font-size: 16px; }
+        .btn-lang { background: #34495e; color: white; }
+        .btn-next { background: #e74c3c; color: white; }
+        .btn-reset { background: #95a5a6; color: white; }
+        button:hover { filter: brightness(1.1); transform: translateY(-2px); }
+        
+        .array-box { display: flex; justify-content: center; gap: 40px; margin-bottom: 20px; }
+        .flag-item { font-size: 20px; font-weight: bold; padding: 15px 25px; border-radius: 8px; background: #ecf0f1; border: 2px solid #bdc3c7; transition: all 0.3s; }
+        .flag-true { background: #ffeaa7; border-color: #fdcb6e; color: #d35400; }
+        
+        .stage { height: 280px; position: relative; border: 2px dashed #b2bec3; border-radius: 12px; background: #fafbfc; overflow: hidden; margin-bottom: 25px; }
+        .critical-section { width: 200px; height: 140px; border: 4px solid #00cec9; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px; color: #00b894; background: #e8f8f5; border-radius: 10px; }
+        
+        .process { width: 90px; height: 90px; border-radius: 12px; position: absolute; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 22px; transition: all 0.6s cubic-bezier(0.25, 0.8, 0.25, 1); z-index: 10; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+        #p0 { background: #0984e3; left: 60px; top: 95px; }
+        #p1 { background: #6c5ce7; right: 60px; top: 95px; }
+        .blocked { background: #d63031 !important; animation: shake 0.5s infinite alternate; }
+        
+        @keyframes shake { 0% { transform: translateX(0); } 100% { transform: translateX(5px); } }
+
+        .desc-box { background: #f1f2f6; padding: 20px; border-radius: 10px; font-size: 18px; min-height: 90px; border-left: 6px solid #e74c3c; text-align: left; line-height: 1.5; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 id="title">臨界區實作：方法 2 (Flag Array 陣列)</h2>
+    <div class="controls">
+        <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+        <button class="btn-next" onclick="nextStep()" id="btn-next">下一步 (Next)</button>
+        <button class="btn-reset" onclick="reset()" id="btn-reset">重置 (Reset)</button>
+    </div>
+
+    <div class="array-box">
+        <div class="flag-item" id="flag0-box">flag[0] = <span id="flag0-val">false</span></div>
+        <div class="flag-item" id="flag1-box">flag[1] = <span id="flag1-val">false</span></div>
+    </div>
+
+    <div class="stage">
+        <div class="critical-section" id="cs-label">臨界區<br>(Critical Section)</div>
+        <div class="process" id="p0">P0</div>
+        <div class="process" id="p1">P1</div>
+    </div>
+
+    <div class="desc-box" id="desc-text">
+        初始狀態：flag[0] = false, flag[1] = false。雙方都不想進入臨界區。
+    </div>
+</div>
+
+<script>
+    let lang = 'zh';
+    let step = 0;
+
+    const dict = {
+        zh: {
+            title: "臨界區實作：方法 2 (Flag Array)", next: "下一步 (Next)", reset: "重置 (Reset)", cs: "臨界區<br>(Critical Section)",
+            s0: "初始狀態：flag[0] = false, flag[1] = false。雙方都不想進入臨界區。",
+            s1: "步驟 1：P0 想要進入，因此將自己的意圖 flag[0] 設為 true。",
+            s2: "步驟 2 (致命時機)：此時發生 Context Switch！P1 也想要進入，將 flag[1] 設為 true。",
+            s3: "步驟 3：P0 準備進入，檢查 while(flag[1])。發現 P1 也想進去，P0 停下等待。",
+            s4: "步驟 4：P1 準備進入，檢查 while(flag[0])。發現 P0 也想進去，P1 停下等待。",
+            s5: "步驟 5：❌ 死結 (Deadlock)！兩人互相等待對方放下手 (設為 false)，但兩人都卡在 while 迴圈中，系統永久停滯！"
+        },
+        en: {
+            title: "Critical Section: Method 2 (Flag Array)", next: "Next Step", reset: "Reset", cs: "Critical Section",
+            s0: "Initial State: flag[0] = false, flag[1] = false. Neither wants to enter.",
+            s1: "Step 1: P0 wants to enter, sets its intent flag[0] = true.",
+            s2: "Step 2 (Fatal Timing): Context Switch occurs! P1 also wants to enter, sets flag[1] = true.",
+            s3: "Step 3: P0 tries to enter, checks while(flag[1]). Sees P1 wants to enter, P0 waits.",
+            s4: "Step 4: P1 tries to enter, checks while(flag[0]). Sees P0 wants to enter, P1 waits.",
+            s5: "Step 5: ❌ DEADLOCK! Both are waiting for the other to yield (set flag to false), but both are stuck in the while loop. System halts forever!"
+        }
+    };
+
+    function updateUI() {
+        document.getElementById('title').innerText = dict[lang].title;
+        document.getElementById('btn-next').innerText = dict[lang].next;
+        document.getElementById('btn-reset').innerText = dict[lang].reset;
+        document.getElementById('cs-label').innerHTML = dict[lang].cs;
+        
+        let desc = document.getElementById('desc-text');
+        desc.innerText = dict[lang]['s' + step];
+    }
+
+    function toggleLang() {
+        lang = lang === 'zh' ? 'en' : 'zh';
+        updateUI();
+    }
+
+    function reset() {
+        step = 0;
+        document.getElementById('flag0-val').innerText = "false";
+        document.getElementById('flag1-val').innerText = "false";
+        document.getElementById('flag0-box').className = "flag-item";
+        document.getElementById('flag1-box').className = "flag-item";
+        
+        let p0 = document.getElementById('p0');
+        let p1 = document.getElementById('p1');
+        p0.style.left = "60px"; p0.className = "process";
+        p1.style.right = "60px"; p1.className = "process";
+        
+        updateUI();
+    }
+
+    function nextStep() {
+        if(step === 0) {
+            step = 1;
+            document.getElementById('flag0-val').innerText = "true";
+            document.getElementById('flag0-box').classList.add('flag-true');
+            document.getElementById('p0').style.left = "150px";
+        } else if(step === 1) {
+            step = 2;
+            document.getElementById('flag1-val').innerText = "true";
+            document.getElementById('flag1-box').classList.add('flag-true');
+            document.getElementById('p1').style.right = "150px";
+        } else if(step === 2) {
+            step = 3;
+            document.getElementById('p0').style.left = "200px";
+            document.getElementById('p0').classList.add('blocked');
+        } else if(step === 3) {
+            step = 4;
+            document.getElementById('p1').style.right = "200px";
+            document.getElementById('p1').classList.add('blocked');
+        } else if(step === 4) {
+            step = 5;
+            // Both are blocked, showing deadlock message
+        } else {
+            reset();
+            return;
+        }
+        updateUI();
+    }
+
+    updateUI();
+</script>
+</body>
+</html>

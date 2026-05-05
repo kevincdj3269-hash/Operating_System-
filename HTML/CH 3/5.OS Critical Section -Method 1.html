@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OS Critical Section: Method 1</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f6f9; color: #333; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); width: 100%; max-width: 800px; text-align: center; }
+        .controls { margin-bottom: 20px; display: flex; justify-content: center; gap: 10px; }
+        button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        .btn-lang { background: #34495e; color: white; }
+        .btn-next { background: #e67e22; color: white; font-size: 16px; }
+        .btn-reset { background: #95a5a6; color: white; }
+        button:hover { opacity: 0.8; }
+        
+        .var-box { font-size: 24px; font-weight: bold; color: #e74c3c; margin: 20px 0; padding: 10px; background: #fdf2e9; border-radius: 8px; border: 2px dashed #e74c3c; }
+        
+        .stage { height: 250px; position: relative; border: 2px solid #ccc; border-radius: 8px; background: #fafafa; overflow: hidden; margin-bottom: 20px; }
+        .critical-section { width: 180px; height: 120px; border: 4px dashed #27ae60; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center; font-weight: bold; color: #27ae60; background: #eafaf1; }
+        
+        .process { width: 80px; height: 80px; border-radius: 50%; position: absolute; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 20px; transition: all 0.6s ease; z-index: 10; }
+        #p0 { background: #3498db; left: 50px; top: 85px; }
+        #p1 { background: #9b59b6; right: 50px; top: 85px; }
+        
+        .desc-box { background: #eef2f7; padding: 20px; border-radius: 8px; font-size: 18px; min-height: 80px; border-left: 5px solid #3498db; text-align: left; }
+        .warning { color: #e74c3c; font-weight: bold; margin-top: 10px; display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 id="title">臨界區實作：方法 1 (嚴格交替法)</h2>
+    <div class="controls">
+        <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+        <button class="btn-next" onclick="nextStep()" id="btn-next">下一步 (Next)</button>
+        <button class="btn-reset" onclick="reset()" id="btn-reset">重置 (Reset)</button>
+    </div>
+
+    <div class="var-box">共享變數 turn = <span id="turn-val">0</span></div>
+
+    <div class="stage">
+        <div class="critical-section" id="cs-label">臨界區<br>(Critical Section)</div>
+        <div class="process" id="p0">P0</div>
+        <div class="process" id="p1">P1</div>
+    </div>
+
+    <div class="desc-box">
+        <div id="desc-text">初始狀態：turn = 0。P0 與 P1 都在剩餘區。</div>
+        <div id="warning-text" class="warning">❌ 違反進行條件 (Progress Violation)：P1 在剩餘區發呆，卻導致想進入的 P0 被永遠卡住！</div>
+    </div>
+</div>
+
+<script>
+    let lang = 'zh';
+    let step = 0;
+
+    const dict = {
+        zh: {
+            title: "臨界區實作：方法 1 (嚴格交替法)", next: "下一步 (Next)", reset: "重置 (Reset)", cs: "臨界區<br>(Critical Section)",
+            s0: "初始狀態：turn = 0。P0 與 P1 都在剩餘區。",
+            s1: "步驟 1：P0 檢查 turn == 0 成功，進入臨界區。",
+            s2: "步驟 2：P0 執行完畢離開，並將 turn 設為 1。",
+            s3: "步驟 3：P1 檢查 turn == 1 成功，進入臨界區。",
+            s4: "步驟 4：P1 執行完畢離開，並將 turn 設為 0。",
+            s5: "步驟 5：P0 很快又想進入，檢查 turn == 0 成功，再次進入。",
+            s6: "步驟 6：P0 離開，將 turn 設為 1。交棒給 P1。",
+            s7: "步驟 7 (致命缺陷)：P0 又想進入，但此時 turn == 1。P1 在剩餘區無意圖進入臨界區，導致 P0 卡在門外無了期等待！",
+            warn: "❌ 違反進行條件 (Progress Violation)：P1 不想進去，卻擋住了 P0！"
+        },
+        en: {
+            title: "Critical Section: Method 1 (Strict Alternation)", next: "Next Step", reset: "Reset", cs: "Critical Section",
+            s0: "Initial State: turn = 0. Both P0 and P1 are in Remainder Section.",
+            s1: "Step 1: P0 checks turn == 0 (True), enters Critical Section.",
+            s2: "Step 2: P0 exits and sets turn = 1.",
+            s3: "Step 3: P1 checks turn == 1 (True), enters Critical Section.",
+            s4: "Step 4: P1 exits and sets turn = 0.",
+            s5: "Step 5: P0 wants to enter again, checks turn == 0 (True), enters.",
+            s6: "Step 6: P0 exits and sets turn = 1. Turn is passed to P1.",
+            s7: "Step 7 (Fatal Flaw): P0 wants to enter AGAIN, but turn == 1. P1 is idle and doesn't want to enter. P0 is stuck waiting forever!",
+            warn: "❌ Progress Violation: P1 doesn't want to enter, but strictly blocks P0!"
+        }
+    };
+
+    function updateUI() {
+        document.getElementById('title').innerText = dict[lang].title;
+        document.getElementById('btn-next').innerText = dict[lang].next;
+        document.getElementById('btn-reset').innerText = dict[lang].reset;
+        document.getElementById('cs-label').innerHTML = dict[lang].cs;
+        document.getElementById('warning-text').innerText = dict[lang].warn;
+        
+        let desc = document.getElementById('desc-text');
+        if(step === 0) desc.innerText = dict[lang].s0;
+        else if(step === 1) desc.innerText = dict[lang].s1;
+        else if(step === 2) desc.innerText = dict[lang].s2;
+        else if(step === 3) desc.innerText = dict[lang].s3;
+        else if(step === 4) desc.innerText = dict[lang].s4;
+        else if(step === 5) desc.innerText = dict[lang].s5;
+        else if(step === 6) desc.innerText = dict[lang].s6;
+        else if(step === 7) desc.innerText = dict[lang].s7;
+    }
+
+    function toggleLang() {
+        lang = lang === 'zh' ? 'en' : 'zh';
+        updateUI();
+    }
+
+    function reset() {
+        step = 0;
+        document.getElementById('turn-val').innerText = "0";
+        document.getElementById('p0').style.left = "50px";
+        document.getElementById('p0').style.top = "85px";
+        document.getElementById('p1').style.right = "50px";
+        document.getElementById('p1').style.top = "85px";
+        document.getElementById('warning-text').style.display = "none";
+        document.getElementById('desc-text').style.display = "block";
+        updateUI();
+    }
+
+    function nextStep() {
+        if(step === 0) {
+            step = 1;
+            document.getElementById('p0').style.left = "calc(50% - 40px)";
+        } else if(step === 1) {
+            step = 2;
+            document.getElementById('p0').style.left = "50px";
+            document.getElementById('turn-val').innerText = "1";
+        } else if(step === 2) {
+            step = 3;
+            document.getElementById('p1').style.right = "calc(50% - 40px)";
+        } else if(step === 3) {
+            step = 4;
+            document.getElementById('p1').style.right = "50px";
+            document.getElementById('turn-val').innerText = "0";
+        } else if(step === 4) {
+            step = 5;
+            document.getElementById('p0').style.left = "calc(50% - 40px)";
+        } else if(step === 5) {
+            step = 6;
+            document.getElementById('p0').style.left = "50px";
+            document.getElementById('turn-val').innerText = "1";
+        } else if(step === 6) {
+            step = 7;
+            document.getElementById('p0').style.left = "180px"; // move close to CS but blocked
+            document.getElementById('warning-text').style.display = "block";
+        } else {
+            reset();
+            return;
+        }
+        updateUI();
+    }
+
+    updateUI();
+</script>
+</body>
+</html>

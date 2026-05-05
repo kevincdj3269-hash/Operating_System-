@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OS Monitor Simulation</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: #f0f2f5; color: #333; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); width: 100%; max-width: 900px; text-align: center; }
+        .controls { margin-bottom: 20px; display: flex; justify-content: center; gap: 10px; }
+        button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; font-size: 15px; }
+        .btn-lang { background: #34495e; color: white; }
+        .btn-next { background: #e67e22; color: white; }
+        .btn-reset { background: #95a5a6; color: white; }
+        button:hover { opacity: 0.8; transform: translateY(-2px); }
+        
+        .monitor-bounds { border: 4px solid #2c3e50; border-radius: 15px; padding: 20px; position: relative; height: 350px; background: #ecf0f1; margin: 20px 0; display: flex; justify-content: space-between; }
+        .monitor-title { position: absolute; top: -15px; left: 50%; transform: translateX(-50%); background: #2c3e50; color: white; padding: 5px 20px; border-radius: 15px; font-weight: bold; }
+        
+        .zone { border: 2px dashed #7f8c8d; border-radius: 10px; padding: 10px; width: 30%; position: relative; background: white; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; }
+        .zone-title { font-weight: bold; margin-bottom: 15px; color: #2c3e50; border-bottom: 2px solid #eee; width: 100%; padding-bottom: 5px; }
+        
+        .process { width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 18px; position: absolute; transition: all 0.8s cubic-bezier(0.25, 0.8, 0.25, 1); box-shadow: 0 4px 8px rgba(0,0,0,0.2); z-index: 10; }
+        #p1 { background: #2980b9; left: 20px; top: -80px; }
+        #p2 { background: #c0392b; right: 20px; top: -80px; }
+
+        .desc-box { background: #e8f4f8; padding: 20px; border-radius: 8px; font-size: 16px; min-height: 80px; border-left: 5px solid #2980b9; text-align: left; line-height: 1.5; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 id="title">作業系統：監督器 (Monitor) 運作演繹</h2>
+    <div class="controls">
+        <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+        <button class="btn-next" onclick="nextStep()" id="btn-next">下一步 (Next)</button>
+        <button class="btn-reset" onclick="reset()" id="btn-reset">重置 (Reset)</button>
+    </div>
+
+    <div style="position: relative; margin-top: 80px;">
+        <div class="process" id="p1">P1</div>
+        <div class="process" id="p2">P2</div>
+        
+        <div class="monitor-bounds">
+            <div class="monitor-title" id="m-title">監督器邊界 (Monitor Boundary)</div>
+            
+            <div class="zone" id="z-entry">
+                <div class="zone-title" id="zt-entry">入口佇列<br>(Entry Queue)</div>
+            </div>
+            
+            <div class="zone" id="z-active" style="border-color: #27ae60; border-width: 3px;">
+                <div class="zone-title" id="zt-active">活躍區<br>(Active Area)</div>
+            </div>
+            
+            <div class="zone" id="z-cond">
+                <div class="zone-title" id="zt-cond">條件變數等待區<br>(Condition Queue)</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="desc-box" id="desc-text">
+        初始狀態：P1 與 P2 都在監督器外部。
+    </div>
+</div>
+
+<script>
+    let lang = 'zh';
+    let step = 0;
+
+    const dict = {
+        zh: {
+            title: "作業系統：監督器 (Monitor) 運作演繹", next: "下一步 (Next)", reset: "重置 (Reset)",
+            mTitle: "監督器邊界 (Monitor Boundary)", ztEntry: "入口佇列<br>(Entry Queue)", ztActive: "活躍區 (容量: 1)<br>(Active Area)", ztCond: "條件變數等待區<br>(Condition Queue)",
+            s0: "初始狀態：P1 與 P2 都在監督器外部。",
+            s1: "步驟 1：P1 呼叫監督器內的函式。因為監督器目前空閒，P1 直接進入【活躍區】並獲得互斥鎖。",
+            s2: "步驟 2：P2 也想呼叫函式。但監督器保證「互斥」，因此 P2 被擋在門外，進入【入口佇列】等待。",
+            s3: "步驟 3：P1 發現某個條件未滿足（例如資源不夠），於是執行 `wait()`。P1 被移入【條件等待區】，並**讓出**活躍區的使用權！",
+            s4: "步驟 4：因為活躍區空出來了，在入口佇列等待的 P2 獲准進入【活躍區】開始執行。",
+            s5: "步驟 5：P2 執行完畢，補足了條件，並執行 `signal()`。這會喚醒在條件等待區的 P1，將 P1 移回【入口佇列】準備接手。",
+            s6: "步驟 6：P2 離開監督器。P1 重新進入【活躍區】完成剩下的工作。完美達成同步！"
+        },
+        en: {
+            title: "OS: Monitor Synchronization Demo", next: "Next Step", reset: "Reset",
+            mTitle: "Monitor Boundary", ztEntry: "Entry Queue", ztActive: "Active Area<br>(Capacity: 1)", ztCond: "Condition Wait Queue",
+            s0: "Initial State: P1 and P2 are outside the monitor.",
+            s1: "Step 1: P1 calls a procedure. Since the monitor is free, P1 enters the [Active Area] (Mutual Exclusion acquired).",
+            s2: "Step 2: P2 calls a procedure. Because of Mutual Exclusion, P2 is blocked and moves to the [Entry Queue].",
+            s3: "Step 3: P1 realizes a condition is missing, so it executes `wait()`. P1 moves to the [Condition Queue] and **releases** the Active Area!",
+            s4: "Step 4: Since the Active Area is free, P2 moves from the [Entry Queue] into the [Active Area].",
+            s5: "Step 5: P2 completes its task, fulfills the condition, and executes `signal()`. P1 is woken up and moves back to the [Entry Queue].",
+            s6: "Step 6: P2 exits the monitor. P1 re-enters the [Active Area] to finish its task. Synchronization complete!"
+        }
+    };
+
+    function updateUI() {
+        document.getElementById('title').innerText = dict[lang].title;
+        document.getElementById('btn-next').innerText = dict[lang].next;
+        document.getElementById('btn-reset').innerText = dict[lang].reset;
+        document.getElementById('m-title').innerText = dict[lang].mTitle;
+        document.getElementById('zt-entry').innerHTML = dict[lang].ztEntry;
+        document.getElementById('zt-active').innerHTML = dict[lang].ztActive;
+        document.getElementById('zt-cond').innerHTML = dict[lang].ztCond;
+        document.getElementById('desc-text').innerHTML = dict[lang]['s' + step];
+    }
+
+    function toggleLang() { lang = lang === 'zh' ? 'en' : 'zh'; updateUI(); }
+
+    function reset() {
+        step = 0;
+        let p1 = document.getElementById('p1'); let p2 = document.getElementById('p2');
+        p1.style.top = "-80px"; p1.style.left = "20px";
+        p2.style.top = "-80px"; p2.style.left = "auto"; p2.style.right = "20px";
+        updateUI();
+    }
+
+    function nextStep() {
+        let p1 = document.getElementById('p1'); let p2 = document.getElementById('p2');
+        if(step === 0) {
+            step = 1;
+            p1.style.top = "150px"; p1.style.left = "calc(50% - 30px)"; // Active
+        } else if(step === 1) {
+            step = 2;
+            p2.style.top = "150px"; p2.style.right = "auto"; p2.style.left = "15%"; // Entry
+        } else if(step === 2) {
+            step = 3;
+            p1.style.left = "80%"; // Cond Queue
+        } else if(step === 3) {
+            step = 4;
+            p2.style.left = "calc(50% - 30px)"; // Active
+        } else if(step === 4) {
+            step = 5;
+            p1.style.left = "15%"; // Entry
+        } else if(step === 5) {
+            step = 6;
+            p2.style.top = "-80px"; p2.style.left = "auto"; p2.style.right = "20px"; // Leave
+            setTimeout(() => { p1.style.left = "calc(50% - 30px)"; }, 500); // Active
+        } else {
+            reset(); return;
+        }
+        updateUI();
+    }
+    updateUI();
+</script>
+</body>
+</html>

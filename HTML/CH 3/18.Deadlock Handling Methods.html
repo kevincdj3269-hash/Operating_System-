@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deadlock Handling Methods</title>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --accent: #3498db;
+            --success: #27ae60;
+            --danger: #e74c3c;
+            --warning: #f1c40f;
+            --bg: #f8f9fa;
+        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, sans-serif; background: var(--bg); color: #333; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 100%; max-width: 900px; text-align: center; }
+        
+        .header-controls { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; padding-bottom: 15px; margin-bottom: 20px; }
+        .mode-tabs { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; }
+        
+        button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; font-size: 15px; }
+        .btn-lang { background: var(--primary); color: white; }
+        .btn-tab { background: #ecf0f1; color: var(--primary); }
+        .btn-tab.active { background: var(--accent); color: white; }
+        .btn-next { background: var(--success); color: white; padding: 12px 30px; font-size: 16px;}
+        .btn-reset { background: #95a5a6; color: white; }
+        button:hover { filter: brightness(1.1); transform: translateY(-2px); }
+
+        .stage { height: 350px; position: relative; background: #fafbfc; border: 2px dashed #bdc3c7; border-radius: 12px; margin-bottom: 20px; overflow: hidden; display: flex; justify-content: center; align-items: center; }
+        
+        .node { width: 90px; height: 90px; position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 18px; border-radius: 12px; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.2); transition: all 0.5s; z-index: 10; }
+        .process { background: #8e44ad; }
+        .resource { background: #7f8c8d; border-radius: 50%; } /* Circular resources */
+        .os-system { width: 140px; height: 80px; background: var(--primary); top: 20px; left: 50%; transform: translateX(-50%); border-radius: 8px; z-index: 5; font-size: 16px; border: 3px solid #f39c12;}
+
+        .line { position: absolute; height: 4px; background: #333; transform-origin: left center; z-index: 1; transition: opacity 0.3s; opacity: 0; }
+        .line-green { background: var(--success); }
+        .line-red { background: var(--danger); }
+        
+        .overlay-alert { position: absolute; background: rgba(231, 76, 60, 0.9); color: white; padding: 5px 15px; border-radius: 5px; font-weight: bold; z-index: 20; opacity: 0; transition: 0.3s; font-size: 14px;}
+        .anim-shake { animation: shake 0.5s infinite; }
+        .anim-pulse { animation: pulse 1s infinite; }
+        
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+        @keyframes pulse { 0% { transform: translateX(-50%) scale(1); } 50% { transform: translateX(-50%) scale(1.05); box-shadow: 0 0 15px #f1c40f;} 100% { transform: translateX(-50%) scale(1); } }
+
+        .desc-box { background: #eef2f7; padding: 20px; border-radius: 10px; font-size: 17px; min-height: 100px; border-left: 6px solid var(--accent); text-align: left; line-height: 1.6; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header-controls">
+        <h2 id="title" style="margin:0;">死結處理機制 (Deadlock Handling)</h2>
+        <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+    </div>
+
+    <div class="mode-tabs" id="tabs">
+        <button class="btn-tab active" onclick="setMode('prev')">1. 預防 (Prevention)</button>
+        <button class="btn-tab" onclick="setMode('avoid')">2. 避免 (Avoidance)</button>
+        <button class="btn-tab" onclick="setMode('detect')">3. 偵測與恢復 (Detection)</button>
+    </div>
+
+    <div style="display:flex; justify-content:center; gap: 10px; margin-bottom: 20px;">
+        <button class="btn-next" onclick="nextStep()" id="btn-next">下一步 (Next Step)</button>
+        <button class="btn-reset" onclick="reset()" id="btn-reset">重置 (Reset)</button>
+    </div>
+
+    <div class="stage" id="stage">
+        <!-- Elements injected by JS based on mode -->
+    </div>
+
+    <div class="desc-box" id="desc-text"></div>
+</div>
+
+<script>
+    let lang = 'zh';
+    let mode = 'prev'; // prev, avoid, detect
+    let step = 0;
+
+    const dict = {
+        zh: {
+            title: "死結處理機制 (Deadlock Handling)", next: "下一步 (Next Step)", reset: "重置 (Reset)",
+            t1: "1. 預防 (Prevention)", t2: "2. 避免 (Avoidance)", t3: "3. 偵測與恢復 (Detection)",
+            os: "作業系統核心",
+            
+            p_s0: "【死結預防：資源排序】<br>作業系統強制規定：所有行程必須依照資源編號「由小到大」申請。",
+            p_s1: "步驟 1：P1 申請資源。它先申請編號較小的 R1，再申請 R2。這符合 OS 規定，分配成功。",
+            p_s2: "步驟 2：P2 申請資源。P2 試圖先申請編號較大的 R2。",
+            p_s3: "步驟 3：OS 介入！因為 P2 違反了「由小到大」的順序規定，OS 直接拒絕 P2 的請求。從源頭打破了「循環等待」的條件！",
+
+            a_s0: "【死結避免：銀行家演算法】<br>OS 在每次分配資源前，都會進行「沙盤推演」，確保系統處於安全狀態。",
+            a_s1: "步驟 1：P1 發出資源請求。",
+            a_s2: "步驟 2：OS 啟動安全狀態演算法 (Banker's Algorithm) 進行計算推演...",
+            a_s3: "步驟 3：OS 推演結果為「安全 (Safe)」。批准 P1 的請求並分配資源。",
+            a_s4: "步驟 4：P2 發出資源請求。",
+            a_s5: "步驟 5：OS 再次推演，發現如果借給 P2，系統可能會陷入無解狀態。推演結果為「不安全 (Unsafe)」。OS 暫停 P2 的請求，請 P2 等待！",
+
+            d_s0: "【死結偵測與恢復】<br>OS 平時不管控，讓行程自由競爭資源。但會在背景定期畫圖掃描。",
+            d_s1: "步驟 1：自由競爭下，P1 佔有 R1 等 R2；P2 佔有 R2 等 R1。此時已經發生死結！",
+            d_s2: "步驟 2：OS 啟動定期背景掃描 (Cycle Detection)。",
+            d_s3: "步驟 3：OS 發現了「循環等待 (Cycle)」！確診死結。",
+            d_s4: "步驟 4：OS 啟動恢復機制。強制撲殺 (Terminate) 行程 P2，剝奪其資源，讓 P1 得以繼續執行以解除死結！"
+        },
+        en: {
+            title: "Deadlock Handling Mechanisms", next: "Next Step", reset: "Reset",
+            t1: "1. Prevention", t2: "2. Avoidance", t3: "3. Detection & Recovery",
+            os: "OS Kernel",
+
+            p_s0: "[Prevention: Resource Ordering]<br>OS Rule: Processes MUST request resources in increasing numerical order.",
+            p_s1: "Step 1: P1 requests R1 (lower ID) then R2 (higher ID). Rule followed. Granted.",
+            p_s2: "Step 2: P2 tries to request R2 (higher ID) first.",
+            p_s3: "Step 3: OS Intervenes! P2 violates the ordering rule. Request DENIED. The 'Circular Wait' condition is physically prevented!",
+
+            a_s0: "[Avoidance: Banker's Algorithm]<br>OS simulates a 'Safe State' check before granting ANY resource.",
+            a_s1: "Step 1: P1 requests a resource.",
+            a_s2: "Step 2: OS runs the Banker's Algorithm to simulate the allocation...",
+            a_s3: "Step 3: Simulation result: 'Safe'. P1's request is GRANTED.",
+            a_s4: "Step 4: P2 requests a resource.",
+            a_s5: "Step 5: OS simulates again. Result: 'Unsafe' (might lead to deadlock). P2's request is DELAYED/BLOCKED!",
+
+            d_s0: "[Detection & Recovery]<br>OS allows requests freely for max performance, but scans periodically.",
+            d_s1: "Step 1: Free competition leads to P1 holding R1 waiting for R2, and P2 holding R2 waiting for R1. DEADLOCK HAS OCCURRED!",
+            d_s2: "Step 2: OS runs its periodic background scan (Wait-for Graph analysis).",
+            d_s3: "Step 3: OS detects a Cycle! Deadlock confirmed.",
+            d_s4: "Step 4: OS triggers Recovery. It forcefully Terminates P2, preempts its resources, allowing P1 to finish and breaking the deadlock!"
+        }
+    };
+
+    function updateText() {
+        document.getElementById('title').innerText = dict[lang].title;
+        document.getElementById('btn-next').innerText = dict[lang].next;
+        document.getElementById('btn-reset').innerText = dict[lang].reset;
+        const tabs = document.querySelectorAll('.btn-tab');
+        tabs[0].innerText = dict[lang].t1; tabs[1].innerText = dict[lang].t2; tabs[2].innerText = dict[lang].t3;
+        
+        const modePrefix = mode === 'prev' ? 'p' : (mode === 'avoid' ? 'a' : 'd');
+        document.getElementById('desc-text').innerHTML = dict[lang][modePrefix + '_s' + step];
+    }
+
+    function toggleLang() { lang = lang === 'zh' ? 'en' : 'zh'; updateText(); }
+
+    function setMode(newMode) {
+        mode = newMode;
+        const tabs = document.querySelectorAll('.btn-tab');
+        tabs.forEach(t => t.classList.remove('active'));
+        if(mode === 'prev') tabs[0].classList.add('active');
+        if(mode === 'avoid') tabs[1].classList.add('active');
+        if(mode === 'detect') tabs[2].classList.add('active');
+        reset();
+    }
+
+    function drawLine(id, x1, y1, x2, y2, color) {
+        let line = document.getElementById(id);
+        if(!line) {
+            line = document.createElement('div');
+            line.id = id;
+            line.className = 'line';
+            document.getElementById('stage').appendChild(line);
+        }
+        const length = Math.sqrt((x2-x1)**2 + (y2-y1)**2);
+        const angle = Math.atan2(y2-y1, x2-x1) * 180 / Math.PI;
+        line.style.width = length + 'px';
+        line.style.left = x1 + 'px';
+        line.style.top = y1 + 'px';
+        line.style.transform = `rotate(${angle}deg)`;
+        line.style.backgroundColor = color;
+        line.style.opacity = 1;
+    }
+
+    function createNode(id, type, text, top, left) {
+        let node = document.createElement('div');
+        node.id = id;
+        node.className = `node ${type}`;
+        node.style.top = top;
+        node.style.left = left;
+        node.innerHTML = text;
+        document.getElementById('stage').appendChild(node);
+        return node;
+    }
+
+    function createAlert(text, top, left) {
+        let alert = document.createElement('div');
+        alert.className = 'overlay-alert';
+        alert.innerText = text;
+        alert.style.top = top;
+        alert.style.left = left;
+        alert.style.opacity = 1;
+        document.getElementById('stage').appendChild(alert);
+    }
+
+    function reset() {
+        step = 0;
+        document.getElementById('stage').innerHTML = ''; // clear stage
+        
+        if (mode === 'prev') {
+            createNode('p1', 'process', 'P1', '220px', '150px');
+            createNode('p2', 'process', 'P2', '220px', '650px');
+            createNode('r1', 'resource', 'R1 (ID:1)', '50px', '300px');
+            createNode('r2', 'resource', 'R2 (ID:2)', '50px', '500px');
+            createNode('os', 'os-system', dict[lang].os, '20px', '50%');
+        } else if (mode === 'avoid') {
+            createNode('p1', 'process', 'P1', '220px', '250px');
+            createNode('p2', 'process', 'P2', '220px', '550px');
+            createNode('r', 'resource', 'Resource', '220px', '400px');
+            createNode('os', 'os-system', dict[lang].os, '20px', '50%');
+        } else if (mode === 'detect') {
+            createNode('p1', 'process', 'P1', '80px', '250px');
+            createNode('p2', 'process', 'P2', '240px', '550px');
+            createNode('r1', 'resource', 'R1', '80px', '550px');
+            createNode('r2', 'resource', 'R2', '240px', '250px');
+            createNode('os', 'os-system', dict[lang].os, '20px', '50%');
+        }
+        updateText();
+    }
+
+    function nextStep() {
+        if (mode === 'prev') {
+            if (step === 0) { step = 1; drawLine('l1', 195, 220, 345, 140, '#27ae60'); drawLine('l2', 195, 220, 545, 140, '#27ae60'); }
+            else if (step === 1) { step = 2; drawLine('l3', 695, 220, 545, 140, '#f39c12'); document.getElementById('p2').classList.add('anim-shake'); }
+            else if (step === 2) { step = 3; document.getElementById('p2').classList.remove('anim-shake'); document.getElementById('l3').style.backgroundColor = '#e74c3c'; createAlert("Rule Violation! Denied.", "150px", "580px"); }
+            else reset();
+        } 
+        else if (mode === 'avoid') {
+            if (step === 0) { step = 1; drawLine('l1', 295, 220, 445, 265, '#f39c12'); }
+            else if (step === 1) { step = 2; document.getElementById('os').classList.add('anim-pulse'); createAlert("Checking Safe State...", "110px", "380px"); }
+            else if (step === 2) { step = 3; document.getElementById('os').classList.remove('anim-pulse'); document.querySelector('.overlay-alert').remove(); document.getElementById('l1').style.backgroundColor = '#27ae60'; }
+            else if (step === 3) { step = 4; drawLine('l2', 595, 220, 445, 265, '#f39c12'); }
+            else if (step === 4) { step = 5; document.getElementById('os').classList.add('anim-pulse'); createAlert("UNSAFE! Blocked.", "110px", "380px"); document.getElementById('l2').style.backgroundColor = '#e74c3c'; document.getElementById('p2').style.opacity = 0.5;}
+            else reset();
+        }
+        else if (mode === 'detect') {
+            if (step === 0) { step = 1; drawLine('l1', 170, 125, 250, 125, '#27ae60'); drawLine('l2', 295, 125, 550, 285, '#e74c3c'); drawLine('l3', 250, 285, 170, 285, '#27ae60'); drawLine('l4', 550, 125, 295, 285, '#e74c3c'); document.getElementById('p1').classList.add('anim-shake'); document.getElementById('p2').classList.add('anim-shake'); }
+            else if (step === 2 || step === 1) { step = 2; document.getElementById('os').classList.add('anim-pulse'); createAlert("Scanning...", "110px", "380px"); step = 3; } // quick skip
+            else if (step === 3) { step = 4; document.querySelector('.overlay-alert').innerText = "Cycle Detected! Terminating P2."; document.getElementById('p2').style.background = "#e74c3c"; document.getElementById('p2').innerText = "KILLED"; document.getElementById('p2').classList.remove('anim-shake'); document.getElementById('l2').style.opacity = 0; document.getElementById('l3').style.opacity = 0; document.getElementById('p1').classList.remove('anim-shake'); }
+            else reset();
+        }
+        updateText();
+    }
+
+    // Init
+    reset();
+</script>
+
+</body>
+</html>

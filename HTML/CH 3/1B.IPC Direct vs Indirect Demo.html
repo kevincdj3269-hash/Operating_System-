@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPC Direct vs Indirect Demo</title>
+    <style>
+        :root {
+            --primary: #3498db;
+            --secondary: #2ecc71;
+            --bg: #f8f9fa;
+            --text: #2c3e50;
+        }
+        body {
+            font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            width: 100%;
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .header { margin-bottom: 20px; }
+        .controls {
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            background: #eee;
+        }
+        button.active { background: var(--primary); color: white; }
+        button:hover { filter: brightness(0.9); }
+        
+        .stage {
+            height: 300px;
+            position: relative;
+            border: 2px solid #eee;
+            border-radius: 15px;
+            margin: 20px 0;
+            background: #fafafa;
+            overflow: hidden;
+        }
+        .node {
+            width: 80px;
+            height: 80px;
+            border-radius: 12px;
+            position: absolute;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        .process { background: var(--primary); }
+        .mailbox { background: var(--secondary); border-radius: 50%; }
+        
+        #node-p { left: 50px; }
+        #node-q { right: 50px; }
+        #node-m { left: 50%; transform: translate(-50%, -50%); display: none; }
+        
+        .packet {
+            width: 30px;
+            height: 30px;
+            background: #f1c40f;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 90px;
+            transform: translateY(-50%);
+            display: none;
+            z-index: 10;
+        }
+
+        .info-box {
+            background: #eef2f7;
+            padding: 20px;
+            border-radius: 10px;
+            min-height: 80px;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1 id="title">IPC 溝通模式演繹</h1>
+    </div>
+
+    <div class="controls">
+        <button onclick="changeLang('zh')" id="btn-zh" class="active">中文</button>
+        <button onclick="changeLang('en')" id="btn-en">English</button>
+        <span style="margin: 0 10px; border-left: 1px solid #ccc;"></span>
+        <button onclick="setMode('direct')" id="btn-direct" class="active">直接溝通</button>
+        <button onclick="setMode('indirect')" id="btn-indirect">間接溝通</button>
+        <button onclick="nextStep()" style="background: #e74c3c; color: white; margin-left: 20px;">下一步 (Next)</button>
+        <button onclick="reset()">重置</button>
+    </div>
+
+    <div class="stage">
+        <div id="node-p" class="node process">P</div>
+        <div id="node-m" class="node mailbox">Mailbox</div>
+        <div id="node-q" class="node process">Q</div>
+        <div id="packet" class="packet"></div>
+    </div>
+
+    <div class="info-box" id="info">
+        請點擊「下一步」開始演繹。
+    </div>
+</div>
+
+<script>
+    let currentLang = 'zh';
+    let currentMode = 'direct';
+    let step = 0;
+
+    const i18n = {
+        zh: {
+            title: "IPC 溝通模式演繹",
+            direct: "直接溝通",
+            indirect: "間接溝通",
+            start: "點擊「下一步」開始演繹。",
+            d1: "步驟 1：行程 P 指定行程 Q 為接收者，發送訊息。",
+            d2: "完成：訊息已送達行程 Q。",
+            i1: "步驟 1：行程 P 將訊息放入中介信箱 (Mailbox)。",
+            i2: "步驟 2：行程 Q 從信箱中提取該訊息。",
+            i3: "完成：間接溝通結束。"
+        },
+        en: {
+            title: "IPC Communication Visualization",
+            direct: "Direct Comm",
+            indirect: "Indirect Comm",
+            start: "Click 'Next' to start visualization.",
+            d1: "Step 1: Process P explicitly targets Process Q.",
+            d2: "Done: Message delivered to Q.",
+            i1: "Step 1: Process P puts message into the Mailbox.",
+            i2: "Step 2: Process Q retrieves message from the Mailbox.",
+            i3: "Done: Indirect communication complete."
+        }
+    };
+
+    function changeLang(lang) {
+        currentLang = lang;
+        document.getElementById('btn-zh').classList.toggle('active', lang === 'zh');
+        document.getElementById('btn-en').classList.toggle('active', lang === 'en');
+        updateText();
+    }
+
+    function setMode(mode) {
+        currentMode = mode;
+        document.getElementById('btn-direct').classList.toggle('active', mode === 'direct');
+        document.getElementById('btn-indirect').classList.toggle('active', mode === 'indirect');
+        document.getElementById('node-m').style.display = (mode === 'indirect') ? 'flex' : 'none';
+        reset();
+    }
+
+    function updateText() {
+        document.getElementById('title').innerText = i18n[currentLang].title;
+        document.getElementById('btn-direct').innerText = i18n[currentLang].direct;
+        document.getElementById('btn-indirect').innerText = i18n[currentLang].indirect;
+        
+        const info = document.getElementById('info');
+        if (step === 0) info.innerText = i18n[currentLang].start;
+        else if (currentMode === 'direct') {
+            info.innerText = step === 1 ? i18n[currentLang].d1 : i18n[currentLang].d2;
+        } else {
+            if (step === 1) info.innerText = i18n[currentLang].i1;
+            else if (step === 2) info.innerText = i18n[currentLang].i2;
+            else info.innerText = i18n[currentLang].i3;
+        }
+    }
+
+    function reset() {
+        step = 0;
+        const packet = document.getElementById('packet');
+        packet.style.display = 'none';
+        packet.style.left = '90px';
+        packet.style.transition = 'none';
+        updateText();
+    }
+
+    function nextStep() {
+        const packet = document.getElementById('packet');
+        packet.style.display = 'block';
+        packet.style.transition = 'all 0.8s ease-in-out';
+        
+        if (currentMode === 'direct') {
+            if (step === 0) {
+                step = 1;
+                packet.style.left = 'calc(100% - 120px)';
+            } else {
+                step = 2;
+            }
+        } else {
+            if (step === 0) {
+                step = 1;
+                packet.style.left = 'calc(50% - 15px)';
+            } else if (step === 1) {
+                step = 2;
+                packet.style.left = 'calc(100% - 120px)';
+            } else {
+                step = 3;
+            }
+        }
+        updateText();
+    }
+
+    updateText();
+</script>
+
+</body>
+</html>

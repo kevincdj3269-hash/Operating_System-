@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resource Request Algorithm Demo</title>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --success: #27ae60;
+            --danger: #e74c3c;
+            --warning: #f39c12;
+            --bg: #f8f9fa;
+            --table-border: #bdc3c7;
+        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, sans-serif; background: var(--bg); color: #333; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 100%; max-width: 900px; text-align: center; }
+        
+        .controls { display: flex; justify-content: center; gap: 15px; margin-bottom: 25px; flex-wrap: wrap; }
+        button { padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; font-size: 16px; color: white; }
+        .btn-lang { background: #34495e; }
+        .btn-next { background: var(--success); }
+        .btn-reset { background: #95a5a6; }
+        button:hover { filter: brightness(1.1); transform: translateY(-2px); }
+
+        .dashboard { display: flex; justify-content: center; gap: 30px; margin-bottom: 20px; align-items: stretch; flex-wrap: wrap;}
+        
+        /* Table Styles */
+        table { border-collapse: collapse; font-size: 18px; background: white; }
+        th, td { border: 2px solid var(--table-border); padding: 15px; text-align: center; }
+        th { background-color: var(--primary); color: white; }
+        .row-p1 { background-color: #ebf5fb; font-weight: bold;}
+        
+        .val-changed { color: var(--danger); font-weight: 900; animation: pop 0.5s; background-color: #fdf2e9; border-radius: 4px; padding: 2px 5px;}
+        @keyframes pop { 0% { transform: scale(1); } 50% { transform: scale(1.3); } 100% { transform: scale(1); } }
+
+        /* Request & Available Box */
+        .side-panel { display: flex; flex-direction: column; gap: 15px; }
+        .info-box { background: #e8f4f8; border: 3px solid #3498db; border-radius: 10px; padding: 15px; display: flex; flex-direction: column; justify-content: center; align-items: center; width: 220px;}
+        .info-title { font-weight: bold; font-size: 16px; color: #2980b9; margin-bottom: 5px; }
+        .info-vals { font-size: 28px; font-weight: 900; color: #2c3e50; }
+        
+        .req-box { border-color: var(--warning); background: #fdfae6;}
+        .req-title { color: #d35400; }
+
+        .desc-box { background: #f1f2f6; padding: 20px; border-radius: 10px; font-size: 18px; min-height: 120px; border-left: 6px solid var(--primary); text-align: left; line-height: 1.6; margin-top: 10px;}
+        .highlight { font-weight: bold; color: var(--danger); }
+        .highlight-green { font-weight: bold; color: var(--success); }
+        .highlight-warn { font-weight: bold; color: #d35400; }
+        
+        .check-anim { animation: scan 1s infinite alternate; border-color: var(--warning) !important;}
+        @keyframes scan { 0% { box-shadow: 0 0 5px #f1c40f; } 100% { box-shadow: 0 0 20px #f1c40f; } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 id="title">資源請求演算法 (Resource-Request Algorithm)</h2>
+    
+    <div class="controls">
+        <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+        <button class="btn-next" onclick="nextStep()" id="btn-next">下一步 (Next)</button>
+        <button class="btn-reset" onclick="reset()" id="btn-reset">重置 (Reset)</button>
+    </div>
+
+    <div class="dashboard">
+        <table id="bank-table">
+            <thead>
+                <tr>
+                    <th id="th-proc">行程</th>
+                    <th id="th-alloc">已分配 (Allocation)</th>
+                    <th id="th-need">尚需 (Need)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="row-p1">
+                    <td>P1</td>
+                    <td><span id="v-a1">2</span>, <span id="v-a2">0</span>, <span id="v-a3">0</span></td>
+                    <td><span id="v-n1">1</span>, <span id="v-n2">2</span>, <span id="v-n3">2</span></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="side-panel">
+            <div class="info-box req-box" id="req-container">
+                <div class="info-title req-title" id="req-title">P1 發出請求 (Request)</div>
+                <div class="info-vals">1, 0, 2</div>
+            </div>
+            
+            <div class="info-box" id="avail-container">
+                <div class="info-title" id="avail-title">系統庫存 (Available)</div>
+                <div class="info-vals"><span id="v-av1">3</span>, <span id="v-av2">3</span>, <span id="v-av3">2</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="desc-box" id="desc-text">
+        點擊「下一步」開始演繹。觀察 OS 如何透過「三道防線」審核 P1 的請求。
+    </div>
+</div>
+
+<script>
+    let lang = 'zh';
+    let step = 0;
+
+    const dict = {
+        zh: {
+            title: "資源請求演算法 (Resource-Request Algorithm)", next: "下一步 (Next)", reset: "重置 (Reset)",
+            thProc: "行程", thAlloc: "已分配 (Allocation)", thNeed: "尚需 (Need)",
+            reqTitle: "P1 發出請求 (Request)", availTitle: "系統庫存 (Available)",
+            
+            s0: "點擊「下一步」開始演繹。觀察 OS 如何透過「三道防線」審核 P1 的請求。",
+            s1: "<b>第一道防線 (防貪婪)：</b><br>OS 檢查：Request(1,0,2) ≤ Need(1,2,2) 嗎？<br><span class='highlight-green'>通過！</span> P1 沒有要求超過它原本承諾的最大需求量。",
+            s2: "<b>第二道防線 (庫存檢查)：</b><br>OS 檢查：Request(1,0,2) ≤ Available(3,3,2) 嗎？<br><span class='highlight-green'>通過！</span> 銀行金庫目前有足夠的資源可以借出。",
+            s3: "<b>第三道防線準備 (沙盤推演)：</b><br>OS <span class='highlight-warn'>假裝 (Pretend)</span> 把資源借給 P1，並更新帳本：<br>1. 庫存減少 (Available - Request)<br>2. P1 已分配增加 (Allocation + Request)<br>3. P1 尚需減少 (Need - Request)",
+            s4: "<b>執行安全狀態檢查 (Safety Algorithm)：</b><br>OS 開始運算... (模擬推演假裝借出後的系統狀態是否安全)。",
+            s5: "<b>審核結果 (Grant)：</b><br>推演結果為 <span class='highlight-green'>SAFE (安全)</span>！<br>OS 正式核准 P1 的請求，剛才假裝更新的帳本狀態轉為永久生效！"
+        },
+        en: {
+            title: "Resource-Request Algorithm", next: "Next Step", reset: "Reset",
+            thProc: "Process", thAlloc: "Allocation", thNeed: "Need",
+            reqTitle: "P1 Request", availTitle: "System Available",
+            
+            s0: "Click 'Next' to start. Watch how the OS evaluates P1's request using 3 defensive checks.",
+            s1: "<b>Check 1 (Greed Rule):</b><br>Is Request(1,0,2) ≤ Need(1,2,2)?<br><span class='highlight-green'>Passed!</span> P1 is not asking for more than its declared maximum need.",
+            s2: "<b>Check 2 (Inventory Rule):</b><br>Is Request(1,0,2) ≤ Available(3,3,2)?<br><span class='highlight-green'>Passed!</span> The system currently has enough resources in stock.",
+            s3: "<b>Check 3 Prep (Pretend Allocation):</b><br>The OS <span class='highlight-warn'>PRETENDS</span> to allocate resources to P1 and updates the ledgers temporarily:<br>1. Available - Request<br>2. Allocation + Request<br>3. Need - Request",
+            s4: "<b>Running Safety Algorithm (Simulation):</b><br>OS is calculating... (Checking if this new pretended state is Safe).",
+            s5: "<b>Final Decision (Grant):</b><br>Simulation result is <span class='highlight-green'>SAFE</span>!<br>The OS officially GRANTS the request. The temporary state becomes permanent!"
+        }
+    };
+
+    function updateUI() {
+        document.getElementById('title').innerText = dict[lang].title;
+        document.getElementById('btn-next').innerText = dict[lang].next;
+        document.getElementById('btn-reset').innerText = dict[lang].reset;
+        document.getElementById('th-proc').innerText = dict[lang].thProc;
+        document.getElementById('th-alloc').innerText = dict[lang].thAlloc;
+        document.getElementById('th-need').innerText = dict[lang].thNeed;
+        document.getElementById('req-title').innerText = dict[lang].reqTitle;
+        document.getElementById('avail-title').innerText = dict[lang].availTitle;
+        
+        document.getElementById('desc-text').innerHTML = dict[lang]['s' + step];
+    }
+
+    function toggleLang() {
+        lang = lang === 'zh' ? 'en' : 'zh';
+        updateUI();
+    }
+
+    function changeVal(id, newVal) {
+        let el = document.getElementById(id);
+        el.innerText = newVal;
+        el.classList.add('val-changed');
+    }
+
+    function reset() {
+        step = 0;
+        
+        // Reset classes
+        const ids = ['v-a1','v-a2','v-a3','v-n1','v-n2','v-n3','v-av1','v-av2','v-av3'];
+        ids.forEach(id => document.getElementById(id).classList.remove('val-changed'));
+        
+        document.getElementById('req-container').classList.remove('check-anim');
+        document.getElementById('avail-container').classList.remove('check-anim');
+        document.getElementById('bank-table').classList.remove('check-anim');
+
+        // Reset values
+        document.getElementById('v-a1').innerText = "2"; document.getElementById('v-a2').innerText = "0"; document.getElementById('v-a3').innerText = "0";
+        document.getElementById('v-n1').innerText = "1"; document.getElementById('v-n2').innerText = "2"; document.getElementById('v-n3').innerText = "2";
+        document.getElementById('v-av1').innerText = "3"; document.getElementById('v-av2').innerText = "3"; document.getElementById('v-av3').innerText = "2";
+
+        updateUI();
+    }
+
+    function nextStep() {
+        if(step === 0) {
+            step = 1;
+            // Visual for check 1
+        } else if(step === 1) {
+            step = 2;
+            // Visual for check 2
+        } else if(step === 2) {
+            step = 3;
+            // Pretend allocation
+            changeVal('v-av1', '2'); // Avail 3-1
+            changeVal('v-av3', '0'); // Avail 2-2
+            
+            changeVal('v-a1', '3'); // Alloc 2+1
+            changeVal('v-a3', '2'); // Alloc 0+2
+            
+            changeVal('v-n1', '0'); // Need 1-1
+            changeVal('v-n3', '0'); // Need 2-2
+        } else if(step === 3) {
+            step = 4;
+            // Animation for safety check
+            document.getElementById('bank-table').classList.add('check-anim');
+            document.getElementById('avail-container').classList.add('check-anim');
+        } else if(step === 4) {
+            step = 5;
+            document.getElementById('bank-table').classList.remove('check-anim');
+            document.getElementById('avail-container').classList.remove('check-anim');
+            // Remove highlighting as it becomes permanent
+            const ids = ['v-a1','v-a2','v-a3','v-n1','v-n2','v-n3','v-av1','v-av2','v-av3'];
+            ids.forEach(id => {
+                let el = document.getElementById(id);
+                if(el.classList.contains('val-changed')) {
+                    el.style.color = "var(--success)"; // Turn green to show success
+                }
+            });
+        } else {
+            reset();
+            return;
+        }
+        
+        updateUI();
+    }
+
+    updateUI();
+</script>
+
+</body>
+</html>

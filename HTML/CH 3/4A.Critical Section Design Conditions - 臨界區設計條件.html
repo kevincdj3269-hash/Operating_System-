@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Critical Section Design Conditions - 臨界區設計條件</title>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --accent: #e67e22;
+            --success: #27ae60;
+            --danger: #e74c3c;
+            --bg: #f5f6fa;
+        }
+        body {
+            font-family: 'Segoe UI', 'PingFang TC', sans-serif;
+            background-color: var(--bg);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            max-width: 900px;
+            width: 100%;
+        }
+        .header {
+            text-align: center;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 20px;
+            margin-bottom: 25px;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+        .btn-lang { background: var(--primary); color: white; }
+        .btn-action { background: var(--accent); color: white; }
+        .btn-reset { background: #95a5a6; color: white; }
+        button:hover { opacity: 0.8; transform: translateY(-2px); }
+
+        .simulation-box {
+            height: 300px;
+            border: 2px dashed #bdc3c7;
+            border-radius: 12px;
+            position: relative;
+            background: #fff;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        .critical-section {
+            width: 200px;
+            height: 150px;
+            border: 4px solid var(--primary);
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            text-align: center;
+            background: #ecf0f1;
+            z-index: 1;
+        }
+        .process {
+            width: 80px;
+            height: 80px;
+            border-radius: 10px;
+            position: absolute;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            z-index: 10;
+            transition: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        #pA { background: #3498db; left: 50px; top: 110px; }
+        #pB { background: #9b59b6; right: 50px; top: 110px; }
+
+        .status-panel {
+            background: #eef2f7;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 5px solid var(--primary);
+        }
+        .condition-list {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 15px;
+        }
+        .condition-item {
+            font-size: 0.9em;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+        .dot-green { background: var(--success); }
+        .dot-red { background: var(--danger); }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <div class="header">
+        <h1 id="main-title">臨界區設計條件演繹</h1>
+        <div class="controls">
+            <button class="btn-lang" onclick="toggleLang()">English / 中文</button>
+            <button class="btn-action" onclick="requestEntry('A')" id="btn-a">行程 A 請求進入</button>
+            <button class="btn-action" onclick="requestEntry('B')" id="btn-b">行程 B 請求進入</button>
+            <button class="btn-reset" onclick="reset()">重置系統</button>
+        </div>
+    </div>
+
+    <div class="simulation-box">
+        <div class="process" id="pA">P-A</div>
+        <div class="process" id="pB">P-B</div>
+        <div class="critical-section" id="cs-box">
+            <span id="cs-text">臨界區<br>(Critical Section)</span>
+        </div>
+    </div>
+
+    <div class="status-panel">
+        <div id="desc-text">系統準備就緒。點擊按鈕發送請求。</div>
+        <div class="condition-list">
+            <div class="condition-item"><span class="dot dot-green" id="dot-mutex"></span> <span id="label-mutex">互斥 (Mutual Exclusion)</span></div>
+            <div class="condition-item"><span class="dot dot-green" id="dot-progress"></span> <span id="label-progress">進行 (Progress)</span></div>
+            <div class="condition-item"><span class="dot dot-green" id="dot-waiting"></span> <span id="label-waiting">有限等待 (Bounded Waiting)</span></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let lang = 'zh';
+    let pAState = 'remainder'; // remainder, waiting, inCS
+    let pBState = 'remainder';
+    let lock = false;
+
+    const content = {
+        zh: {
+            title: "臨界區設計條件演繹",
+            btnA: "行程 A 請求進入",
+            btnB: "行程 B 請求進入",
+            reset: "重置系統",
+            cs: "臨界區<br>(Critical Section)",
+            mutex: "互斥 (Mutual Exclusion)",
+            progress: "進行 (Progress)",
+            waiting: "有限等待 (Bounded Waiting)",
+            ready: "系統準備就緒。點擊按鈕發送請求。",
+            aIn: "行程 A 進入臨界區執行作業。",
+            bIn: "行程 B 進入臨界區執行作業。",
+            aWait: "行程 A 請求進入，但臨界區已被佔用，必須等待 (符合互斥)。",
+            bWait: "行程 B 請求進入，但臨界區已被佔用，必須等待 (符合互斥)。",
+            conflict: "警告：互斥失效！兩個行程同時進入臨界區。",
+            exit: "行程離開臨界區，釋放資源。"
+        },
+        en: {
+            title: "Critical Section Design Conditions",
+            btnA: "P-A Request Entry",
+            btnB: "P-B Request Entry",
+            reset: "Reset System",
+            cs: "Critical Section",
+            mutex: "Mutual Exclusion",
+            progress: "Progress",
+            waiting: "Bounded Waiting",
+            ready: "System ready. Click buttons to request.",
+            aIn: "Process A is in the Critical Section.",
+            bIn: "Process B is in the Critical Section.",
+            aWait: "P-A requests entry but CS is occupied. P-A waits (Mutual Exclusion met).",
+            bWait: "P-B requests entry but CS is occupied. P-B waits (Mutual Exclusion met).",
+            conflict: "WARNING: Mutex Failed! Both processes in CS simultaneously.",
+            exit: "Process exited the CS, resource released."
+        }
+    };
+
+    function updateUI() {
+        document.getElementById('main-title').innerText = content[lang].title;
+        document.getElementById('btn-a').innerText = content[lang].btnA;
+        document.getElementById('btn-b').innerText = content[lang].btnB;
+        document.getElementById('cs-text').innerHTML = content[lang].cs;
+        document.getElementById('label-mutex').innerText = content[lang].mutex;
+        document.getElementById('label-progress').innerText = content[lang].progress;
+        document.getElementById('label-waiting').innerText = content[lang].waiting;
+    }
+
+    function toggleLang() {
+        lang = lang === 'zh' ? 'en' : 'zh';
+        updateUI();
+    }
+
+    function requestEntry(p) {
+        const desc = document.getElementById('desc-text');
+        
+        if (p === 'A') {
+            if (!lock) {
+                document.getElementById('pA').style.left = 'calc(50% - 40px)';
+                pAState = 'inCS';
+                lock = true;
+                desc.innerText = content[lang].aIn;
+            } else {
+                if (pAState === 'inCS') {
+                    // Exit
+                    document.getElementById('pA').style.left = '50px';
+                    pAState = 'remainder';
+                    lock = false;
+                    desc.innerText = content[lang].exit;
+                } else {
+                    desc.innerText = content[lang].aWait;
+                }
+            }
+        } else {
+            if (!lock) {
+                document.getElementById('pB').style.right = 'calc(50% - 40px)';
+                pBState = 'inCS';
+                lock = true;
+                desc.innerText = content[lang].bIn;
+            } else {
+                if (pBState === 'inCS') {
+                    document.getElementById('pB').style.right = '50px';
+                    pBState = 'remainder';
+                    lock = false;
+                    desc.innerText = content[lang].exit;
+                } else {
+                    desc.innerText = content[lang].bWait;
+                }
+            }
+        }
+    }
+
+    function reset() {
+        document.getElementById('pA').style.left = '50px';
+        document.getElementById('pB').style.right = '50px';
+        pAState = 'remainder';
+        pBState = 'remainder';
+        lock = false;
+        document.getElementById('desc-text').innerText = content[lang].ready;
+    }
+
+    updateUI();
+</script>
+
+</body>
+</html>

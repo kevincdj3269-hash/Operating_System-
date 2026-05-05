@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ostrich Algorithm Demo</title>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --os: #34495e;
+            --process: #3498db;
+            --danger: #e74c3c;
+            --user: #8e44ad;
+            --bg: #f8f9fa;
+        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, sans-serif; background: var(--bg); color: #333; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 100%; max-width: 850px; text-align: center; }
+        
+        .controls { display: flex; justify-content: center; gap: 15px; margin-bottom: 25px; flex-wrap: wrap; }
+        button { padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; font-size: 16px; color: white; }
+        .btn-lang { background: var(--primary); }
+        .btn-next { background: #27ae60; }
+        .btn-reset { background: #95a5a6; }
+        button:hover { filter: brightness(1.1); transform: translateY(-2px); }
+
+        .stage { height: 400px; position: relative; background: #fafbfc; border: 2px dashed #bdc3c7; border-radius: 12px; margin-bottom: 20px; overflow: hidden; }
+        
+        .entity { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; color: white; border-radius: 12px; transition: all 0.6s cubic-bezier(0.25, 0.8, 0.25, 1); box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+        
+        .os-box { width: 160px; height: 160px; background: var(--os); top: 20px; left: 50%; transform: translateX(-50%); font-size: 18px; z-index: 5; border-radius: 50%;}
+        .os-face { font-size: 50px; margin-top: 10px; transition: 0.3s; }
+        
+        .process-box { width: 90px; height: 90px; background: var(--process); top: 220px; font-size: 20px; z-index: 10; }
+        #p1 { left: 150px; }
+        #p2 { right: 150px; }
+
+        .user-box { width: 120px; height: 80px; background: var(--user); bottom: -100px; left: 50%; transform: translateX(-50%); font-size: 16px; opacity: 0; z-index: 20; }
+        
+        .lightning { position: absolute; font-size: 40px; top: 120px; left: 50%; transform: translateX(-50%); opacity: 0; z-index: 15; transition: 0.3s;}
+
+        .blocked { background: var(--danger) !important; animation: shake 0.5s infinite; }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+
+        .desc-box { background: #eef2f7; padding: 20px; border-radius: 10px; font-size: 18px; min-height: 100px; border-left: 6px solid #f1c40f; text-align: left; line-height: 1.6; }
+        .highlight { color: var(--danger); font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 id="title">死結解除：鴕鳥演算法 (Ostrich Algorithm)</h2>
+    
+    <div class="controls">
+        <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+        <button class="btn-next" onclick="nextStep()" id="btn-next">下一步 (Next)</button>
+        <button class="btn-reset" onclick="reset()" id="btn-reset">重置 (Reset)</button>
+    </div>
+
+    <div class="stage">
+        <div class="entity os-box" id="os">
+            <span id="os-label">作業系統</span>
+            <div class="os-face" id="os-face">👀</div>
+        </div>
+
+        <div class="entity process-box" id="p1">P1<br><small id="p1-stat">Running</small></div>
+        <div class="entity process-box" id="p2">P2<br><small id="p2-stat">Running</small></div>
+
+        <div class="lightning" id="lightning">⚡💥</div>
+
+        <div class="entity user-box" id="user">
+            <span id="user-label">使用者 (Task Manager)</span>
+        </div>
+    </div>
+
+    <div class="desc-box" id="desc-text">
+        點擊「下一步」開始演繹。初始狀態：行程正常運行，OS 正常監控。
+    </div>
+</div>
+
+<script>
+    let lang = 'zh';
+    let step = 0;
+
+    const dict = {
+        zh: {
+            title: "死結解除：鴕鳥演算法 (Ostrich Algorithm)", next: "下一步 (Next)", reset: "重置 (Reset)",
+            osLabel: "作業系統", userLabel: "使用者 (工作管理員)",
+            run: "Running", dead: "BLOCKED", killed: "KILLED",
+            s0: "點擊「下一步」開始演繹。初始狀態：應用程式正常運行，OS 提供最高效能的資源分配。",
+            s1: "<b>步驟 1：死結發生！</b><br>因為缺乏預防機制，P1 和 P2 發生了資源衝突，陷入了<span class='highlight'>永久的死結 (Deadlock)</span>。應用程式無回應！",
+            s2: "<b>步驟 2：OS 啟動鴕鳥模式！</b><br>OS 發現死結了嗎？也許。但 OS 選擇<span class='highlight'>把頭埋進沙子裡，假裝沒看到 (Ignore)</span>，因為處理死結太耗費系統資源了。OS 繼續做其他事。",
+            s3: "<b>步驟 3：使用者介入！</b><br>使用者發現電腦卡住了，非常生氣，於是打開了「工作管理員 (Task Manager)」。",
+            s4: "<b>步驟 4：手動解除死結。</b><br>使用者手動將 P2 「結束工作 (Kill)」。P2 被消滅，資源釋放，P1 得以繼續執行。這就是鴕鳥演算法的核心精神：把問題丟給使用者！"
+        },
+        en: {
+            title: "Deadlock Handling: Ostrich Algorithm", next: "Next Step", reset: "Reset",
+            osLabel: "Operating System", userLabel: "User (Task Manager)",
+            run: "Running", dead: "BLOCKED", killed: "KILLED",
+            s0: "Click 'Next' to start. Initial state: Applications running normally. OS provides max performance.",
+            s1: "<b>Step 1: DEADLOCK OCCURS!</b><br>Due to lack of prevention, P1 and P2 collide and enter a <span class='highlight'>Deadlock</span>. The applications are Not Responding!",
+            s2: "<b>Step 2: OS enters Ostrich Mode!</b><br>Did the OS notice? Maybe. But the OS chooses to <span class='highlight'>stick its head in the sand and ignore it</span> because detecting deadlocks is too costly.",
+            s3: "<b>Step 3: User Intervention!</b><br>The user notices the frozen apps, gets annoyed, and opens the Task Manager.",
+            s4: "<b>Step 4: Manual Resolution.</b><br>The user manually 'Ends Task' for P2. P2 is killed, resources are freed, and P1 resumes. The core spirit of the Ostrich Algorithm: Let the user fix it!"
+        }
+    };
+
+    function updateUI() {
+        document.getElementById('title').innerText = dict[lang].title;
+        document.getElementById('btn-next').innerText = dict[lang].next;
+        document.getElementById('btn-reset').innerText = dict[lang].reset;
+        document.getElementById('os-label').innerText = dict[lang].osLabel;
+        document.getElementById('user-label').innerText = dict[lang].userLabel;
+        document.getElementById('desc-text').innerHTML = dict[lang]['s' + step];
+    }
+
+    function toggleLang() {
+        lang = lang === 'zh' ? 'en' : 'zh';
+        updateUI();
+        // Update stats safely
+        if(step < 1) { document.getElementById('p1-stat').innerText = dict[lang].run; document.getElementById('p2-stat').innerText = dict[lang].run; }
+        else if(step >= 1 && step < 4) { document.getElementById('p1-stat').innerText = dict[lang].dead; document.getElementById('p2-stat').innerText = dict[lang].dead; }
+        if(step === 4) { document.getElementById('p2-stat').innerText = dict[lang].killed; }
+    }
+
+    function reset() {
+        step = 0;
+        let p1 = document.getElementById('p1'); let p2 = document.getElementById('p2');
+        p1.classList.remove('blocked'); p2.classList.remove('blocked');
+        p1.style.opacity = 1; p2.style.background = "var(--process)";
+        p1.style.left = "150px"; p2.style.right = "150px";
+        
+        document.getElementById('p1-stat').innerText = dict[lang].run;
+        document.getElementById('p2-stat').innerText = dict[lang].run;
+        
+        document.getElementById('lightning').style.opacity = 0;
+        document.getElementById('os-face').innerText = "👀";
+        
+        let user = document.getElementById('user');
+        user.style.opacity = 0; user.style.bottom = "-100px";
+        
+        updateUI();
+    }
+
+    function nextStep() {
+        let p1 = document.getElementById('p1'); let p2 = document.getElementById('p2');
+        let user = document.getElementById('user');
+
+        if(step === 0) {
+            step = 1;
+            p1.style.left = "calc(50% - 100px)"; p2.style.right = "calc(50% - 100px)";
+            p1.classList.add('blocked'); p2.classList.add('blocked');
+            document.getElementById('lightning').style.opacity = 1;
+            document.getElementById('p1-stat').innerText = dict[lang].dead;
+            document.getElementById('p2-stat').innerText = dict[lang].dead;
+            document.getElementById('os-face').innerText = "😧";
+        } else if(step === 1) {
+            step = 2;
+            // Ostrich Mode
+            document.getElementById('os-face').innerText = "🙈";
+            document.getElementById('lightning').style.opacity = 0;
+        } else if(step === 2) {
+            step = 3;
+            // User arrives
+            user.style.opacity = 1;
+            user.style.bottom = "80px";
+        } else if(step === 3) {
+            step = 4;
+            // Kill P2
+            p2.classList.remove('blocked');
+            p2.style.background = "#95a5a6";
+            document.getElementById('p2-stat').innerText = dict[lang].killed;
+            
+            // P1 freed
+            p1.classList.remove('blocked');
+            document.getElementById('p1-stat').innerText = dict[lang].run;
+            p1.style.left = "150px";
+            
+            // User leaves
+            user.style.opacity = 0;
+            user.style.bottom = "-100px";
+            document.getElementById('os-face').innerText = "😅";
+        } else {
+            reset();
+            return;
+        }
+        updateUI();
+    }
+
+    updateUI();
+</script>
+
+</body>
+</html>

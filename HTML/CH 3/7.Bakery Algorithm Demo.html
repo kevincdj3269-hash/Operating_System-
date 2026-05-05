@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bakery Algorithm Demo</title>
+    <style>
+        :root {
+            --p0-color: #3498db;
+            --p1-color: #9b59b6;
+            --p2-color: #e67e22;
+            --bg-color: #f4f6f9;
+            --text-color: #2c3e50;
+        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg-color); color: var(--text-color); display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        .container { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 100%; max-width: 900px; text-align: center; }
+        .controls { margin-bottom: 25px; display: flex; justify-content: center; gap: 15px; flex-wrap: wrap; }
+        button { padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.3s; font-size: 16px; }
+        .btn-lang { background: #34495e; color: white; }
+        .btn-next { background: #27ae60; color: white; }
+        .btn-reset { background: #95a5a6; color: white; }
+        button:hover { filter: brightness(1.1); transform: translateY(-2px); }
+
+        .stage { height: 350px; position: relative; border: 2px dashed #bdc3c7; border-radius: 12px; background: #fafbfc; overflow: hidden; margin-bottom: 25px; }
+        
+        .critical-section { width: 220px; height: 120px; border: 5px solid #e74c3c; position: absolute; left: 50%; top: 30px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 18px; color: #c0392b; background: #fdedec; border-radius: 10px; z-index: 1; }
+        .queue-line { position: absolute; top: 180px; left: 10%; right: 10%; height: 2px; background: dashed 2px #ccc; border-top: 2px dashed #ccc; }
+
+        .process { width: 90px; height: 90px; border-radius: 12px; position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 20px; transition: all 0.8s cubic-bezier(0.25, 0.8, 0.25, 1); z-index: 10; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+        .ticket-badge { background: #f1c40f; color: #333; font-size: 14px; padding: 3px 10px; border-radius: 15px; margin-top: 5px; font-weight: 800; border: 2px solid white; transition: 0.3s; }
+        
+        /* Initial Positions (Idle) */
+        #p0 { background: var(--p0-color); left: 15%; top: 230px; }
+        #p1 { background: var(--p1-color); left: 45%; top: 230px; }
+        #p2 { background: var(--p2-color); left: 75%; top: 230px; }
+
+        .desc-box { background: #eef2f7; padding: 20px; border-radius: 10px; font-size: 18px; min-height: 100px; border-left: 6px solid #f1c40f; text-align: left; line-height: 1.6; }
+        .highlight { color: #e74c3c; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 id="title">臨界區實作：方法 3 (麵包店演算法 Bakery Algorithm)</h2>
+    <div class="controls">
+        <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+        <button class="btn-next" onclick="nextStep()" id="btn-next">下一步 (Next)</button>
+        <button class="btn-reset" onclick="reset()" id="btn-reset">重置 (Reset)</button>
+    </div>
+
+    <div class="stage">
+        <div class="critical-section" id="cs-label">
+            <span>臨界區 (CS)</span>
+            <small style="font-size: 14px; margin-top: 5px; color: #7f8c8d;">最多容納 1 人</small>
+        </div>
+        <div class="queue-line"></div>
+        <div style="position: absolute; top: 185px; left: 10%; color: #7f8c8d; font-size: 14px;" id="queue-label">等待區 (Queue)</div>
+
+        <div class="process" id="p0">P0 <div class="ticket-badge" id="t0">Num: 0</div></div>
+        <div class="process" id="p1">P1 <div class="ticket-badge" id="t1">Num: 0</div></div>
+        <div class="process" id="p2">P2 <div class="ticket-badge" id="t2">Num: 0</div></div>
+    </div>
+
+    <div class="desc-box" id="desc-text">
+        初始狀態：所有行程都在剩餘區 (Idle)。號碼皆為 0。
+    </div>
+</div>
+
+<script>
+    let lang = 'zh';
+    let step = 0;
+
+    const dict = {
+        zh: {
+            title: "臨界區實作：方法 3 (麵包店演算法 Bakery Algorithm)", next: "下一步 (Next)", reset: "重置 (Reset)",
+            cs: "<span>臨界區 (CS)</span><small style='font-size: 14px; margin-top: 5px; color: #7f8c8d;'>最多容納 1 人</small>",
+            queue: "等待區 (Queue)",
+            s0: "初始狀態：所有行程都在剩餘區 (Idle)。號碼皆為 0。",
+            s1: "步驟 1：P0 與 P1 同時想要進入臨界區。他們抽號碼牌。由於兩人同時抽，都取得了最大值+1，<span class='highlight'>也就是號碼 1</span>。兩人進入等待區。",
+            s2: "步驟 2：誰先進入？因為號碼相同 (1 == 1)，系統啟用 Tie-Breaker 比較 PID。<span class='highlight'>P0 (ID 0) < P1 (ID 1)</span>，所以 P0 優先進入臨界區！P1 繼續等待。",
+            s3: "步驟 3：P0 執行期間，P2 也想進入。P2 尋找目前最大號碼 (是 1)，給自己分配 <span class='highlight'>號碼 2</span>，進入等待區排隊。",
+            s4: "步驟 4：P0 執行完畢離開，並將自己的號碼歸零 (Num: 0)。",
+            s5: "步驟 5：等待區中，P1 的號碼是 1，P2 的號碼是 2。P1 號碼最小，獲准進入臨界區！",
+            s6: "步驟 6：P1 執行完畢離開，並將號碼歸零。",
+            s7: "步驟 7：等待區只剩 P2 (號碼 2)。P2 獲准進入臨界區！",
+            s8: "步驟 8：P2 執行完畢離開，號碼歸零。系統回到初始狀態。完美達成了互斥、進行與有限等待！"
+        },
+        en: {
+            title: "Critical Section: Method 3 (Bakery Algorithm)", next: "Next Step", reset: "Reset",
+            cs: "<span>Critical Section</span><small style='font-size: 14px; margin-top: 5px; color: #7f8c8d;'>Capacity: 1</small>",
+            queue: "Waiting Queue",
+            s0: "Initial State: All processes are idle. Ticket numbers are 0.",
+            s1: "Step 1: P0 and P1 want to enter simultaneously. They draw tickets. Since they draw at the same time, both get max(0)+1 = <span class='highlight'>Ticket 1</span>. They move to the Queue.",
+            s2: "Step 2: Who goes first? Since tickets are equal (1 == 1), the Tie-Breaker compares PIDs. <span class='highlight'>P0 (ID 0) < P1 (ID 1)</span>, so P0 enters the CS! P1 waits.",
+            s3: "Step 3: While P0 is in CS, P2 wants to enter. P2 finds the max ticket (1) and draws <span class='highlight'>Ticket 2</span>. P2 waits in queue.",
+            s4: "Step 4: P0 finishes, exits CS, and resets its ticket to 0 (Num: 0).",
+            s5: "Step 5: In the queue, P1 has Ticket 1, P2 has Ticket 2. P1 has the smallest ticket and enters the CS!",
+            s6: "Step 6: P1 finishes, exits CS, and resets its ticket to 0.",
+            s7: "Step 7: P2 is the only one left in queue (Ticket 2). P2 enters the CS!",
+            s8: "Step 8: P2 finishes, exits, and resets its ticket. System returns to idle. Mutual Exclusion, Progress, and Bounded Waiting achieved perfectly!"
+        }
+    };
+
+    function updateUI() {
+        document.getElementById('title').innerText = dict[lang].title;
+        document.getElementById('btn-next').innerText = dict[lang].next;
+        document.getElementById('btn-reset').innerText = dict[lang].reset;
+        document.getElementById('cs-label').innerHTML = dict[lang].cs;
+        document.getElementById('queue-label').innerText = dict[lang].queue;
+        
+        let desc = document.getElementById('desc-text');
+        desc.innerHTML = dict[lang]['s' + step];
+    }
+
+    function toggleLang() {
+        lang = lang === 'zh' ? 'en' : 'zh';
+        updateUI();
+    }
+
+    function reset() {
+        step = 0;
+        let p0 = document.getElementById('p0'); let t0 = document.getElementById('t0');
+        let p1 = document.getElementById('p1'); let t1 = document.getElementById('t1');
+        let p2 = document.getElementById('p2'); let t2 = document.getElementById('t2');
+
+        p0.style.top = "230px"; p0.style.left = "15%"; t0.innerText = "Num: 0";
+        p1.style.top = "230px"; p1.style.left = "45%"; t1.innerText = "Num: 0";
+        p2.style.top = "230px"; p2.style.left = "75%"; t2.innerText = "Num: 0";
+        
+        updateUI();
+    }
+
+    function nextStep() {
+        let p0 = document.getElementById('p0'); let t0 = document.getElementById('t0');
+        let p1 = document.getElementById('p1'); let t1 = document.getElementById('t1');
+        let p2 = document.getElementById('p2'); let t2 = document.getElementById('t2');
+
+        if(step === 0) {
+            step = 1;
+            p0.style.top = "130px"; t0.innerText = "Num: 1"; // Move to queue
+            p1.style.top = "130px"; t1.innerText = "Num: 1"; // Move to queue
+        } else if(step === 1) {
+            step = 2;
+            p0.style.top = "45px"; p0.style.left = "calc(50% - 45px)"; // Enter CS
+        } else if(step === 2) {
+            step = 3;
+            p2.style.top = "130px"; t2.innerText = "Num: 2"; // Move to queue
+        } else if(step === 3) {
+            step = 4;
+            p0.style.top = "230px"; p0.style.left = "15%"; t0.innerText = "Num: 0"; // Exit CS
+        } else if(step === 4) {
+            step = 5;
+            p1.style.top = "45px"; p1.style.left = "calc(50% - 45px)"; // Enter CS
+        } else if(step === 5) {
+            step = 6;
+            p1.style.top = "230px"; p1.style.left = "45%"; t1.innerText = "Num: 0"; // Exit CS
+        } else if(step === 6) {
+            step = 7;
+            p2.style.top = "45px"; p2.style.left = "calc(50% - 45px)"; // Enter CS
+        } else if(step === 7) {
+            step = 8;
+            p2.style.top = "230px"; p2.style.left = "75%"; t2.innerText = "Num: 0"; // Exit CS
+        } else {
+            reset();
+            return;
+        }
+        updateUI();
+    }
+
+    updateUI();
+</script>
+</body>
+</html>

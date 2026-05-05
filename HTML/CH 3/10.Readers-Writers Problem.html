@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Readers-Writers Problem</title>
+    <style>
+        :root {
+            --reader: #3498db;
+            --writer: #e67e22;
+            --db-bg: #ecf0f1;
+            --db-border: #95a5a6;
+            --danger: #e74c3c;
+            --success: #2ecc71;
+            --text: #2c3e50;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, sans-serif;
+            background-color: #f8f9fa;
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            width: 100%;
+            max-width: 900px;
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .controls {
+            margin-bottom: 25px;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 10px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 16px;
+            transition: all 0.2s;
+            color: white;
+        }
+        .btn-lang { background: #34495e; }
+        .btn-next { background: var(--success); }
+        .btn-reset { background: #7f8c8d; }
+        button:hover { filter: brightness(1.1); transform: translateY(-2px); }
+
+        .dashboard {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin-bottom: 30px;
+        }
+        .stat-box {
+            background: #fdfdfd;
+            border: 2px solid var(--db-border);
+            border-radius: 10px;
+            padding: 10px 25px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .val { color: var(--danger); font-size: 24px; margin-left: 10px; }
+
+        .stage {
+            height: 350px;
+            position: relative;
+            background: #fafbfc;
+            border: 2px dashed var(--db-border);
+            border-radius: 12px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .database {
+            width: 200px;
+            height: 180px;
+            border: 6px solid var(--db-border);
+            border-radius: 15px;
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: var(--db-bg);
+            transition: all 0.3s;
+            z-index: 1;
+        }
+        .db-title { font-weight: bold; font-size: 20px; margin-bottom: 10px; }
+        .db-locked-reader { border-color: var(--reader); background: #ebf5fb; }
+        .db-locked-writer { border-color: var(--writer); background: #fdf2e9; }
+
+        .actor {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 18px;
+            position: absolute;
+            transition: all 0.8s cubic-bezier(0.25, 0.8, 0.25, 1);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            z-index: 10;
+        }
+        .reader { background: var(--reader); }
+        .writer { background: var(--writer); border-radius: 10px; } /* Distinct shape */
+        
+        .blocked { background: var(--danger) !important; animation: shake 0.5s; }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+
+        /* Initial Positions */
+        #r1 { top: 30px; left: 50px; opacity: 0; }
+        #r2 { top: 130px; left: 50px; opacity: 0; }
+        #r3 { top: 230px; left: 50px; opacity: 0; }
+        #w1 { top: 130px; right: 50px; opacity: 0; }
+
+        .log-box {
+            background: #eef2f7;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: left;
+            border-left: 6px solid var(--success);
+            font-size: 16px;
+            line-height: 1.6;
+            min-height: 100px;
+        }
+        .highlight { color: var(--danger); font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 id="title">讀取者與寫入者問題 (Readers-Writers)</h2>
+    
+    <div class="controls">
+        <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+        <button class="btn-next" onclick="nextStep()" id="btn-next">下一步 (Next)</button>
+        <button class="btn-reset" onclick="reset()" id="btn-reset">重置 (Reset)</button>
+    </div>
+
+    <div class="dashboard">
+        <div class="stat-box">read_count: <span class="val" id="val-rc">0</span></div>
+        <div class="stat-box">rw_mutex (資料庫鎖): <span class="val" id="val-lock" style="color:var(--success);">1 (Free)</span></div>
+    </div>
+
+    <div class="stage">
+        <div class="database" id="db">
+            <div class="db-title" id="db-label">共享資料庫</div>
+        </div>
+
+        <div class="actor reader" id="r1">R1</div>
+        <div class="actor reader" id="r2">R2</div>
+        <div class="actor reader" id="r3">R3</div>
+        <div class="actor writer" id="w1">W1</div>
+    </div>
+
+    <div class="log-box" id="log-text">
+        點擊「下一步」開始演繹。
+    </div>
+</div>
+
+<script>
+    let lang = 'zh';
+    let step = 0;
+
+    const dict = {
+        zh: {
+            title: "讀取者與寫入者問題 (Readers-Writers Problem)",
+            nextBtn: "下一步 (Next)", resetBtn: "重置 (Reset)", dbLabel: "共享資料庫",
+            free: "1 (Free)", locked: "0 (Locked)",
+            s0: "點擊「下一步」開始演繹。目前資料庫空閒。",
+            s1: "<b>步驟 1：讀取者 1 抵達。</b><br>因為是「第一位」讀者，R1 負責鎖上 rw_mutex，防止寫入者進入。隨後進入資料庫閱讀。",
+            s2: "<b>步驟 2：讀取者 2 抵達。</b><br>因為已經有讀者在裡面了 (rw_mutex 已鎖)，R2 不需要再拿鎖，直接進入資料庫。這展現了<span class='highlight'>讀者可以共享資源</span>。",
+            s3: "<b>步驟 3：寫入者 1 抵達。</b><br>W1 試圖取得 rw_mutex 鎖，但鎖在第一位讀者手上。W1 <span class='highlight'>被迫進入 BLOCKED 狀態</span>，在門外等待。",
+            s4: "<b>步驟 4：讀者們閱讀完畢離開。</b><br>R1 和 R2 離開。R2 是「最後一位」離開的讀者 (read_count=0)，由 R2 負責釋放 rw_mutex 鎖。",
+            s5: "<b>步驟 5：寫入者 1 進入。</b><br>鎖被釋放後，W1 終於取得鎖並進入資料庫。<span class='highlight'>寫入者必須獨佔資源</span>。",
+            s6: "<b>步驟 6：讀取者 3 抵達。</b><br>R3 發現資料庫被寫入者鎖定了。為了避免讀到寫到一半的錯誤資料，R3 <span class='highlight'>被迫進入 BLOCKED 狀態</span>。",
+            s7: "<b>步驟 7：寫入完畢。</b><br>W1 離開並釋放鎖，R3 隨即進入資料庫。演繹完成！"
+        },
+        en: {
+            title: "Readers-Writers Problem",
+            nextBtn: "Next Step", resetBtn: "Reset", dbLabel: "Shared DB",
+            free: "1 (Free)", locked: "0 (Locked)",
+            s0: "Click 'Next' to start. Database is currently free.",
+            s1: "<b>Step 1: Reader 1 arrives.</b><br>As the 'first' reader, R1 locks rw_mutex to block writers, then enters the DB.",
+            s2: "<b>Step 2: Reader 2 arrives.</b><br>Since a reader is already inside, R2 just enters the DB. This demonstrates <span class='highlight'>Readers sharing the resource</span>.",
+            s3: "<b>Step 3: Writer 1 arrives.</b><br>W1 tries to get rw_mutex but it's locked. W1 is <span class='highlight'>BLOCKED</span> and waits outside.",
+            s4: "<b>Step 4: Readers finish and leave.</b><br>R1 & R2 exit. As the 'last' reader (read_count=0), R2 releases the rw_mutex lock.",
+            s5: "<b>Step 5: Writer 1 enters.</b><br>The lock is free, so W1 acquires it and enters. <span class='highlight'>Writers must have exclusive access</span>.",
+            s6: "<b>Step 6: Reader 3 arrives.</b><br>R3 sees the DB is locked by a writer. To prevent reading corrupted data, R3 is <span class='highlight'>BLOCKED</span>.",
+            s7: "<b>Step 7: Writing finished.</b><br>W1 exits and unlocks. R3 can now enter. Demonstration complete!"
+        }
+    };
+
+    function updateUI() {
+        document.getElementById('title').innerText = dict[lang].title;
+        document.getElementById('btn-next').innerText = dict[lang].nextBtn;
+        document.getElementById('btn-reset').innerText = dict[lang].resetBtn;
+        document.getElementById('db-label').innerText = dict[lang].dbLabel;
+        document.getElementById('log-text').innerHTML = dict[lang]['s' + step];
+        
+        let lockText = document.getElementById('val-lock').innerText.includes('0') ? dict[lang].locked : dict[lang].free;
+        document.getElementById('val-lock').innerText = lockText;
+    }
+
+    function toggleLang() {
+        lang = lang === 'zh' ? 'en' : 'zh';
+        updateUI();
+    }
+
+    function setLock(locked, by) {
+        let el = document.getElementById('val-lock');
+        let db = document.getElementById('db');
+        if (locked) {
+            el.innerText = dict[lang].locked;
+            el.style.color = "var(--danger)";
+            db.className = by === 'reader' ? "database db-locked-reader" : "database db-locked-writer";
+        } else {
+            el.innerText = dict[lang].free;
+            el.style.color = "var(--success)";
+            db.className = "database";
+        }
+    }
+
+    function reset() {
+        step = 0;
+        document.getElementById('val-rc').innerText = "0";
+        setLock(false);
+        
+        ['r1', 'r2', 'r3', 'w1'].forEach(id => {
+            let el = document.getElementById(id);
+            el.style.opacity = '0';
+            el.classList.remove('blocked');
+        });
+        
+        document.getElementById('r1').style.left = '50px';
+        document.getElementById('r2').style.left = '50px';
+        document.getElementById('r3').style.left = '50px';
+        document.getElementById('w1').style.right = '50px';
+        
+        updateUI();
+    }
+
+    function nextStep() {
+        let r1 = document.getElementById('r1');
+        let r2 = document.getElementById('r2');
+        let r3 = document.getElementById('r3');
+        let w1 = document.getElementById('w1');
+
+        if(step === 0) {
+            step = 1;
+            r1.style.opacity = '1';
+            r1.style.left = 'calc(50% - 40px - 45px)'; // inside DB left
+            document.getElementById('val-rc').innerText = "1";
+            setLock(true, 'reader');
+        } else if(step === 1) {
+            step = 2;
+            r2.style.opacity = '1';
+            r2.style.left = 'calc(50% - 40px + 45px)'; // inside DB right
+            document.getElementById('val-rc').innerText = "2";
+        } else if(step === 2) {
+            step = 3;
+            w1.style.opacity = '1';
+            w1.style.right = '180px'; // Move close but blocked
+            w1.classList.add('blocked');
+        } else if(step === 3) {
+            step = 4;
+            r1.style.left = '-100px'; // Exit left
+            r2.style.left = '-100px';
+            setTimeout(() => { r1.style.opacity = '0'; r2.style.opacity = '0'; }, 800);
+            document.getElementById('val-rc').innerText = "0";
+            setLock(false);
+        } else if(step === 4) {
+            step = 5;
+            w1.classList.remove('blocked');
+            w1.style.right = 'calc(50% - 40px)'; // inside DB center
+            setLock(true, 'writer');
+        } else if(step === 5) {
+            step = 6;
+            r3.style.opacity = '1';
+            r3.style.left = '180px'; // Move close but blocked
+            r3.classList.add('blocked');
+        } else if(step === 6) {
+            step = 7;
+            w1.style.right = '-100px'; // Exit right
+            setTimeout(() => { w1.style.opacity = '0'; }, 800);
+            setLock(false);
+            
+            r3.classList.remove('blocked');
+            r3.style.left = 'calc(50% - 40px)'; // inside DB
+            document.getElementById('val-rc').innerText = "1";
+            setLock(true, 'reader');
+        } else {
+            reset();
+            return;
+        }
+        updateUI();
+    }
+
+    // Init hide
+    ['r1', 'r2', 'r3', 'w1'].forEach(id => {
+        document.getElementById(id).style.opacity = '0';
+    });
+    updateUI();
+</script>
+
+</body>
+</html>
