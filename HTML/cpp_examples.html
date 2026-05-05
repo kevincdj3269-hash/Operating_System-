@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C++ Phase 1 & 2 Examples | C++ 雙階段實戰範例 (測驗版)</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0d1117;
+            color: #c9d1d9;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 950px;
+            width: 100%;
+            background: #161b22;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+            border: 1px solid #30363d;
+        }
+        
+        .header-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #21262d;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        h1 { margin: 0; font-size: 1.5rem; color: #58a6ff; }
+        .phase-badge {
+            background: #1f6feb;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+            display: inline-block;
+        }
+
+        .btn {
+            background: #21262d;
+            color: #c9d1d9;
+            border: 1px solid #363b42;
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .btn:hover { background: #30363d; border-color: #8b949e; }
+
+        /* 呼吸燈動畫按鈕 (下一步) */
+        .btn-step {
+            background: linear-gradient(135deg, #238636, #2ea043);
+            color: white;
+            border: none;
+            margin: 0 10px;
+            padding: 10px 24px;
+            font-size: 16px;
+            animation: pulse-glow 2s infinite;
+        }
+        .btn-step:hover {
+            background: linear-gradient(135deg, #2ea043, #3fb950);
+            box-shadow: 0 0 15px rgba(46, 160, 67, 0.6);
+        }
+        @keyframes pulse-glow {
+            0% { box-shadow: 0 0 0 0 rgba(46, 160, 67, 0.5); }
+            70% { box-shadow: 0 0 0 10px rgba(46, 160, 67, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(46, 160, 67, 0); }
+        }
+
+        /* 顯示解答按鈕特別樣式 */
+        .btn-show {
+            background: linear-gradient(135deg, #d35400, #e67e22);
+            color: white;
+            border: none;
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            margin: 10px 0 20px 0;
+            border-radius: 8px;
+        }
+        .btn-show:hover {
+            background: linear-gradient(135deg, #e67e22, #f39c12);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(211, 84, 0, 0.4);
+        }
+
+        .nav-controls {
+            display: flex;
+            justify-content: center;
+            margin-top: 30px;
+        }
+
+        .content-card {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            animation: fadeIn 0.4s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .question-box {
+            border-left: 4px solid #f39c12;
+            padding-left: 15px;
+            margin-bottom: 20px;
+            font-size: 1.1rem;
+        }
+        .question-box h3 { color: #f39c12; margin-top: 0; }
+
+        /* 解答區塊 (預設隱藏並帶有出現動畫) */
+        .answer-section {
+            display: none;
+            animation: slideDownFade 0.5s ease-out forwards;
+        }
+        @keyframes slideDownFade {
+            from { opacity: 0; transform: translateY(-15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .explanation-box {
+            border-left: 4px solid #d2a8ff;
+            padding-left: 15px;
+            margin-top: 20px;
+        }
+        .explanation-box h3 { color: #d2a8ff; margin-top: 0; }
+        ul { padding-left: 20px; margin: 0; }
+        li { margin-bottom: 8px; }
+
+        pre {
+            background: #161b22;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Consolas', monospace;
+            font-size: 1.05rem;
+            overflow-x: auto;
+            border: 1px solid #30363d;
+        }
+        
+        /* 語法高亮顏色 */
+        .kw { color: #ff7b72; } 
+        .type { color: #58a6ff; } 
+        .str { color: #a5d6ff; } 
+        .com { color: #8b949e; font-style: italic; } 
+
+        .progress-bar { height: 6px; background: #21262d; border-radius: 3px; margin-bottom: 20px; }
+        .progress-fill { height: 100%; background: #58a6ff; width: 0%; transition: width 0.3s; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header-controls">
+        <div>
+            <div id="phase-badge" class="phase-badge">Phase 1</div>
+            <h1 id="main-title">載入中...</h1>
+        </div>
+        <button class="btn" id="lang-btn" onclick="toggleLang()">Switch to English</button>
+    </div>
+    
+    <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+
+    <div id="content-container"></div>
+
+    <div class="nav-controls">
+        <button class="btn" id="prev-btn" onclick="changeStep(-1)">上一步 / Prev</button>
+        <button class="btn btn-step" id="next-btn" onclick="changeStep(1)">下一步 / Next Step</button>
+    </div>
+</div>
+
+<script>
+    const examplesData = [
+        // ================= 第一階段 (1-8) =================
+        {
+            phase: 1,
+            code: `#include <iostream>\n#include <string>\n\nint main() {\n    std::string name;\n    std::cout << "Enter your name: ";\n    std::cin >> name;\n    std::cout << "Hello, " << name << "!" << std::endl;\n    return 0;\n}`,
+            zh: { title: "1. 基礎輸入輸出 (I/O)", q: "寫一個程式，要求使用者輸入名字，並在螢幕上印出「Hello, [名字]!」。", exp: ["<code>std::cin</code>：用來接收鍵盤輸入。", "<code>>></code> 運算子：將輸入的資料流導向到變數 <code>name</code> 中。"] },
+            en: { title: "1. Basic I/O", q: "Write a program that asks for the user's name and prints 'Hello, [name]!'.", exp: ["<code>std::cin</code>: Used to receive keyboard input.", "<code>>></code> operator: Directs the input stream into the <code>name</code> variable."] }
+        },
+        {
+            phase: 1,
+            code: `#include <iostream>\n\nint main() {\n    const float PI = 3.14159f;\n    float radius = 5.0f;\n    float area = PI * radius * radius;\n    \n    std::cout << "Area: " << area << std::endl;\n    return 0;\n}`,
+            zh: { title: "2. 變數與資料型態", q: "宣告圓周率為常數，並計算半徑為 5.0 的圓面積。", exp: ["<code>const</code>：宣告常數，一旦賦值後就不能再被修改，適合放圓周率。", "<code>float</code>：單精度浮點數，數字後方的 <code>f</code> 是告訴編譯器這是 float 型態。"] },
+            en: { title: "2. Variables & Data Types", q: "Declare PI as a constant and calculate the area of a circle with radius 5.0.", exp: ["<code>const</code>: Declares a constant that cannot be changed after initialization.", "<code>float</code>: Single-precision floating-point. The <code>f</code> suffix tells the compiler it's a float."] }
+        },
+        {
+            phase: 1,
+            code: `#include <iostream>\n\nint main() {\n    int num = 15;\n    if (num % 2 == 0) {\n        std::cout << "Even (偶數)";\n    } else {\n        std::cout << "Odd (奇數)";\n    }\n    return 0;\n}`,
+            zh: { title: "3. 運算子與 if/else 條件", q: "判斷一個整數是奇數還是偶數。", exp: ["<code>%</code> (Modulo)：取餘數運算子。15 除以 2 餘 1。", "<code>==</code>：關係運算子，用來判斷左右兩邊是否「相等」。"] },
+            en: { title: "3. Operators & if/else", q: "Determine if an integer is even or odd.", exp: ["<code>%</code> (Modulo): Returns the remainder. 15 divided by 2 leaves 1.", "<code>==</code>: Relational operator used to check for equality."] }
+        },
+        {
+            phase: 1,
+            code: `#include <iostream>\n\nint main() {\n    char op = '*';\n    int a = 10, b = 5;\n    \n    switch(op) {\n        case '+': std::cout << a + b; break;\n        case '-': std::cout << a - b; break;\n        case '*': std::cout << a * b; break;\n        case '/': std::cout << a / b; break;\n        default: std::cout << "Error";\n    }\n    return 0;\n}`,
+            zh: { title: "4. Switch 流程控制", q: "實作一個簡易計算機，根據字元 (+, -, *, /) 執行對應運算。", exp: ["<code>switch</code>：比對 <code>op</code> 的具體數值或字元。", "<code>break</code>：非常重要！防止程式繼續往下執行其他 case。", "<code>default</code>：當所有 case 都不符合時的預設行為。"] },
+            en: { title: "4. Switch Statement", q: "Implement a simple calculator that performs operations based on a character (+, -, *, /).", exp: ["<code>switch</code>: Matches the specific value of <code>op</code>.", "<code>break</code>: Crucial! Prevents fall-through to the next cases.", "<code>default</code>: The fallback execution if no cases match."] }
+        },
+        {
+            phase: 1,
+            code: `#include <iostream>\n\nint main() {\n    // 印出 1 到 5\n    for (int i = 1; i <= 5; i++) {\n        std::cout << i << " ";\n    }\n    return 0;\n}`,
+            zh: { title: "5. For 迴圈", q: "使用迴圈印出 1 到 5 的數字。", exp: ["<code>int i = 1</code>：迴圈起點 (Initialization)。", "<code>i <= 5</code>：執行條件 (Condition)，條件為真則執行括號內程式。", "<code>i++</code>：每回合結束後的遞增動作。"] },
+            en: { title: "5. For Loop", q: "Print numbers from 1 to 5 using a loop.", exp: ["<code>int i = 1</code>: Loop initialization.", "<code>i <= 5</code>: The condition. Loop runs as long as this is true.", "<code>i++</code>: Increment operation executed at the end of each iteration."] }
+        },
+        {
+            phase: 1,
+            code: `#include <iostream>\n\nint main() {\n    int number = 1234;\n    int sum = 0;\n    \n    while (number > 0) {\n        sum += number % 10; // 取出最後一位數\n        number /= 10;       // 移除最後一位數\n    }\n    std::cout << "Sum of digits: " << sum;\n    return 0;\n}`,
+            zh: { title: "6. While 迴圈", q: "計算一個整數 (例如 1234) 各個位數的總和 (1+2+3+4)。", exp: ["<code>while</code>：適合用於「不知道具體要跑幾次，但知道停止條件」的場景。", "<code>number /= 10</code>：整數除法，1234 / 10 在 C++ 中會變成 123 (小數點直接捨去)。"] },
+            en: { title: "6. While Loop", q: "Calculate the sum of the digits of an integer (e.g., 1234 -> 1+2+3+4).", exp: ["<code>while</code>: Best for scenarios where you don't know the exact number of iterations, but you know the stopping condition.", "<code>number /= 10</code>: Integer division truncates decimals (1234 / 10 becomes 123)."] }
+        },
+        {
+            phase: 1,
+            code: `#include <iostream>\n\n// 函式宣告\nint getMax(int a, int b) {\n    return (a > b) ? a : b;\n}\n\nint main() {\n    int result = getMax(10, 25);\n    std::cout << "Max is: " << result;\n    return 0;\n}`,
+            zh: { title: "7. 函式 (傳值呼叫)", q: "撰寫一個函式，接收兩個整數並回傳較大的那一個。", exp: ["<code>int getMax(...)</code>：前面的 int 代表這個函式執行完畢後，會回傳一個整數給呼叫者。", "<code>(a > b) ? a : b</code>：三元運算子。若 a>b 為真則回傳 a，否則回傳 b。"] },
+            en: { title: "7. Functions (Pass by Value)", q: "Write a function that takes two integers and returns the larger one.", exp: ["<code>int getMax(...)</code>: The leading 'int' means this function returns an integer type.", "<code>(a > b) ? a : b</code>: Ternary operator. If true, returns a, else returns b."] }
+        },
+        {
+            phase: 1,
+            code: `#include <iostream>\n\nint factorial(int n) {\n    if (n <= 1) return 1; // 終止條件\n    return n * factorial(n - 1); // 呼叫自己\n}\n\nint main() {\n    std::cout << "5! = " << factorial(5);\n    return 0;\n}`,
+            zh: { title: "8. 函式 (遞迴 Recursion)", q: "使用遞迴計算 5 的階乘 (5!)。", exp: ["遞迴的核心觀念：函式內部再次呼叫自己。", "<b>終止條件：</b> 遞迴一定要有終止條件 (<code>n <= 1</code>)，否則會造成 Stack Overflow (記憶體堆疊溢位) 導致程式崩潰。"] },
+            en: { title: "8. Functions (Recursion)", q: "Calculate the factorial of 5 (5!) using recursion.", exp: ["Recursion concept: A function calling itself from within.", "<b>Base Case:</b> Recursion MUST have a stopping condition (<code>n <= 1</code>), otherwise it causes a Stack Overflow crash."] }
+        },
+
+        // ================= 第二階段 (9-16) =================
+        {
+            phase: 2,
+            code: `#include <iostream>\n\nint main() {\n    int arr[4] = {10, 20, 30, 40};\n    int sum = 0;\n    \n    for(int i = 0; i < 4; i++) {\n        sum += arr[i];\n    }\n    std::cout << "Array Sum: " << sum;\n    return 0;\n}`,
+            zh: { title: "9. 一維陣列 (1D Array)", q: "宣告一個包含 4 個元素的整數陣列，並計算它們的總和。", exp: ["陣列在記憶體中是<b>連續存放</b>的。", "陣列的索引 (Index) 是從 <code>0</code> 開始計算。<code>arr[4]</code> 的合法索引是 0 到 3，存取 <code>arr[4]</code> 會導致越界錯誤。"] },
+            en: { title: "9. 1D Array", q: "Declare an integer array of 4 elements and calculate their sum.", exp: ["Arrays are stored in <b>contiguous memory blocks</b>.", "Array indices are <code>0-based</code>. The valid bounds for <code>arr[4]</code> are 0 to 3. Accessing <code>arr[4]</code> causes an out-of-bounds error."] }
+        },
+        {
+            phase: 2,
+            code: `#include <iostream>\n\nint main() {\n    int matrix[2][2] = {{1, 2}, {3, 4}};\n    \n    for(int i = 0; i < 2; i++) {\n        for(int j = 0; j < 2; j++) {\n            std::cout << matrix[i][j] << " ";\n        }\n        std::cout << std::endl; // 每印完一列就換行\n    }\n    return 0;\n}`,
+            zh: { title: "10. 多維陣列 (2D Array)", q: "宣告一個 2x2 的矩陣，並用雙層迴圈將其印出。", exp: ["常用於表示座標、像素影像或表格資料。", "第一層迴圈控制「列 (Row)」，第二層迴圈控制「欄 (Column)」。"] },
+            en: { title: "10. 2D Array", q: "Declare a 2x2 matrix and print it using nested loops.", exp: ["Commonly used for coordinates, pixel images, or grids.", "The outer loop controls the 'Row', and the inner loop controls the 'Column'."] }
+        },
+        {
+            phase: 2,
+            code: `#include <iostream>\n#include <string>\n\nint main() {\n    // C-style string (危險)\n    char cStr[] = "AI"; \n    \n    // std::string (安全)\n    std::string cppStr = "Hello ";\n    cppStr += cStr; // 字串串接\n    \n    std::cout << cppStr << std::endl;\n    return 0;\n}`,
+            zh: { title: "11. 字串差異 (C-style vs std::string)", q: "將一個 C-style 字串安全地串接到 C++ std::string 後方。", exp: ["<code>char cStr[]</code>：底層其實是 <code>['A', 'I', '\\0']</code>，必須有結束字元。", "<code>std::string</code>：支援直接使用 <code>+</code> 或 <code>+=</code> 進行直覺的字串串接，且會自動管理記憶體空間。"] },
+            en: { title: "11. C-style vs std::string", q: "Safely concatenate a C-style string into a C++ std::string.", exp: ["<code>char cStr[]</code>: Under the hood it is <code>['A', 'I', '\\0']</code>, requiring a null-terminator.", "<code>std::string</code>: Supports intuitive concatenation using <code>+</code> or <code>+=</code> and manages memory automatically."] }
+        },
+        {
+            phase: 2,
+            code: `#include <iostream>\n\nint main() {\n    int data = 100;\n    int* ptr = &data; // 取得 data 的位址\n    \n    std::cout << "Value: " << *ptr << std::endl;\n    *ptr = 200;       // 透過指標修改原本的值\n    std::cout << "New Value: " << data;\n    return 0;\n}`,
+            zh: { title: "12. 指標基礎 (Pointers)", q: "宣告一個指標指向整數變數，並透過該指標修改變數的值。", exp: ["<code>&</code> (取址運算子)：用來取得變數在記憶體中的真實地址。", "<code>*ptr</code> (解參考)：對指標加上 <code>*</code> 代表「進入該地址拿出裡面的資料」，修改它等同於修改原本的變數。"] },
+            en: { title: "12. Pointers Basics", q: "Declare a pointer pointing to an int variable, and modify the variable via the pointer.", exp: ["<code>&</code> (Address-of): Retrieves the actual physical memory address of a variable.", "<code>*ptr</code> (Dereference): Adding <code>*</code> means 'access the data at this address'. Modifying it alters the original variable."] }
+        },
+        {
+            phase: 2,
+            code: `#include <iostream>\n\nvoid swap(int& a, int& b) {\n    int temp = a;\n    a = b;\n    b = temp;\n}\n\nint main() {\n    int x = 1, y = 2;\n    swap(x, y); // x和y的值會被互換\n    std::cout << "x:" << x << " y:" << y;\n    return 0;\n}`,
+            zh: { title: "13. 參考 (References) 與傳址", q: "實作一個 Swap 函式，互換兩個變數的值。", exp: ["如果在參數宣告時加上 <code>&</code> (例如 <code>int& a</code>)，這稱為「傳參照 (Pass by reference)」。", "它不會影印資料，<code>a</code> 直接成為外部 <code>x</code> 的別名，在函式內互換 a, b，外面的 x, y 也會跟著換。"] },
+            en: { title: "13. References & Pass by Ref", q: "Implement a Swap function that exchanges the values of two variables.", exp: ["Adding <code>&</code> in the parameter (like <code>int& a</code>) is called 'Pass by reference'.", "It doesn't copy data. <code>a</code> becomes an alias for the external <code>x</code>. Swapping a and b inside directly swaps x and y outside."] }
+        },
+        {
+            phase: 2,
+            code: `#include <iostream>\n\nint main() {\n    int size = 5;\n    // 在 Heap 區動態配置陣列\n    int* dynamicArr = new int[size]; \n    \n    for(int i = 0; i < size; i++) dynamicArr[i] = i * 2;\n    \n    // 必須手動釋放記憶體！\n    delete[] dynamicArr; \n    dynamicArr = nullptr;\n    return 0;\n}`,
+            zh: { title: "14. 動態記憶體配置 (new/delete)", q: "在執行期間根據變數 size 動態產生一個陣列，使用後並將其釋放。", exp: ["<code>new</code>：向作業系統的 Heap (堆積) 區申請記憶體空間。", "<code>delete[]</code>：申請陣列就必須使用 <code>delete[]</code> 釋放。若忘記釋放會導致 Memory Leak (記憶體洩漏)。"] },
+            en: { title: "14. Dynamic Memory (new/delete)", q: "Dynamically allocate an array at runtime based on a variable size, then free it.", exp: ["<code>new</code>: Requests memory space from the OS Heap.", "<code>delete[]</code>: Array allocations MUST use <code>delete[]</code> to free. Forgetting this causes a Memory Leak."] }
+        },
+        {
+            phase: 2,
+            code: `#include <iostream>\n#include <string>\n\nstruct Student {\n    std::string name;\n    int id;\n    float gpa;\n};\n\nint main() {\n    Student s1 = {"Alice", 1001, 3.8f};\n    std::cout << s1.name << " (ID: " << s1.id << ") GPA: " << s1.gpa;\n    return 0;\n}`,
+            zh: { title: "15. 自訂結構 (Struct)", q: "定義一個 Student 結構（包含名字、學號、GPA），並實例化印出資料。", exp: ["<code>struct</code>：將不同資料型態打包成一個新單位，方便管理。這也是物件導向 (OOP) 中「類別 (Class)」的前身。", "使用 <code>.</code> (Dot operator) 來存取結構內部的成員變數。"] },
+            en: { title: "15. Structures (Struct)", q: "Define a Student struct (name, id, gpa), instantiate it, and print the data.", exp: ["<code>struct</code>: Bundles different data types into a single unit for better organization. It's the predecessor to Classes in OOP.", "Use the <code>.</code> (Dot operator) to access member variables inside the struct."] }
+        },
+        {
+            phase: 2,
+            code: `#include <iostream>\n\nenum TrafficLight { RED, YELLOW, GREEN };\n\nint main() {\n    TrafficLight state = GREEN;\n    \n    if (state == GREEN) {\n        std::cout << "Go!";\n    } else if (state == RED) {\n        std::cout << "Stop!";\n    }\n    return 0;\n}`,
+            zh: { title: "16. 列舉 (Enum)", q: "使用列舉定義紅綠燈的狀態，並根據狀態決定輸出字串。", exp: ["<code>enum</code>：底層其實就是整數 (RED=0, YELLOW=1, GREEN=2)。", "好處：用有意義的英文單字取代魔法數字 (Magic Numbers)，提高大型專案程式碼的可讀性與維護性。"] },
+            en: { title: "16. Enumerations (Enum)", q: "Define traffic light states using an enum and print actions based on the state.", exp: ["<code>enum</code>: Under the hood, these are just integers (RED=0, YELLOW=1, GREEN=2).", "Benefit: Replaces raw 'magic numbers' with meaningful words, massively improving readability in large codebases."] }
+        }
+    ];
+
+    let currentStep = 0;
+    let currentLang = 'zh'; 
+    let isAnswerShown = false; // 追蹤目前是否已經顯示解答
+
+    const contentContainer = document.getElementById('content-container');
+    const mainTitle = document.getElementById('main-title');
+    const phaseBadge = document.getElementById('phase-badge');
+    const langBtn = document.getElementById('lang-btn');
+    const prevBtn = document.getElementById('prev-btn');
+    const nextBtn = document.getElementById('next-btn');
+    const progressBar = document.getElementById('progress');
+
+    function highlightCode(code) {
+        let escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return escaped
+            .replace(/(\/\/.+)/g, '<span class="com">$1</span>') 
+            .replace(/("[^"]*")/g, '<span class="str">$1</span>') 
+            .replace(/\b(int|float|double|char|bool|void|string|if|else|for|while|do|switch|case|break|continue|default|return|new|delete|struct|enum|const)\b/g, '<span class="kw">$1</span>') 
+            .replace(/(#include|std::cout|std::cin|std::endl|std::string)/g, '<span class="type">$1</span>'); 
+    }
+
+    // 顯示解答的邏輯
+    window.showAnswer = function() {
+        isAnswerShown = true;
+        document.getElementById('show-answer-btn').style.display = 'none';
+        document.getElementById('answer-section').style.display = 'block';
+    }
+
+    function renderStep() {
+        const data = examplesData[currentStep];
+        const textData = data[currentLang];
+        
+        const total = examplesData.length;
+        mainTitle.innerText = `${textData.title} (${currentStep + 1}/${total})`;
+        
+        phaseBadge.innerText = data.phase === 1 
+            ? (currentLang === 'zh' ? '第一階段：基礎語法' : 'Phase 1: Basic Syntax')
+            : (currentLang === 'zh' ? '第二階段：記憶體與結構' : 'Phase 2: Memory & Structs');
+            
+        phaseBadge.style.background = data.phase === 1 ? '#1f6feb' : '#8957e5';
+        progressBar.style.width = `${((currentStep + 1) / total) * 100}%`;
+
+        const listItems = textData.exp.map(item => `<li>${item}</li>`).join('');
+        const answerBtnText = currentLang === 'zh' ? '👀 顯示解答與解析' : '👀 Show Answer & Explanation';
+
+        // 根據 isAnswerShown 狀態決定 CSS 顯示方式
+        const btnDisplay = isAnswerShown ? 'none' : 'block';
+        const answerDisplay = isAnswerShown ? 'block' : 'none';
+
+        contentContainer.innerHTML = `
+            <div class="content-card">
+                <div class="question-box">
+                    <h3>${currentLang === 'zh' ? '🎯 實戰題目' : '🎯 Task'}</h3>
+                    <div>${textData.q}</div>
+                </div>
+                
+                <button id="show-answer-btn" class="btn-show" style="display: ${btnDisplay}" onclick="showAnswer()">
+                    ${answerBtnText}
+                </button>
+                
+                <div id="answer-section" class="answer-section" style="display: ${answerDisplay}">
+                    <pre><code>${highlightCode(data.code)}</code></pre>
+                    
+                    <div class="explanation-box">
+                        <h3>${currentLang === 'zh' ? '💡 關鍵原理解說' : '💡 Key Concept'}</h3>
+                        <ul>${listItems}</ul>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        updateButtons();
+    }
+
+    function changeStep(direction) {
+        currentStep += direction;
+        if(currentStep < 0) currentStep = 0;
+        if(currentStep >= examplesData.length) currentStep = examplesData.length - 1;
+        
+        // 切換題目時，重置為「隱藏解答」狀態
+        isAnswerShown = false; 
+        renderStep();
+    }
+
+    function toggleLang() {
+        currentLang = currentLang === 'zh' ? 'en' : 'zh';
+        langBtn.innerText = currentLang === 'zh' ? 'Switch to English' : '切換至繁體中文';
+        renderStep();
+    }
+
+    function updateButtons() {
+        prevBtn.style.display = currentStep === 0 ? 'none' : 'block';
+        prevBtn.innerText = currentLang === 'zh' ? '上一步' : 'Previous';
+        
+        if (currentStep === examplesData.length - 1) {
+            nextBtn.style.display = 'none';
+        } else {
+            nextBtn.style.display = 'block';
+            nextBtn.innerText = currentLang === 'zh' ? '下一步' : 'Next Step';
+        }
+    }
+
+    // 啟動程式
+    renderStep();
+</script>
+
+</body>
+</html>

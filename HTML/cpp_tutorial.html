@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C++ Interactive Tutorial | C++ 互動式教學</title>
+    <style>
+        /* 基礎重置與暗色主題設定 */
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 900px;
+            width: 100%;
+            background: #1e1e1e;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+            position: relative;
+        }
+        
+        /* 頂部控制列 */
+        .header-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+        }
+        h1 { margin: 0; font-size: 1.8rem; color: #4DA8DA; }
+
+        /* 按鈕基本樣式與 CSS 動畫 */
+        .btn {
+            background: linear-gradient(135deg, #1f618d, #2980b9);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .btn::after {
+            content: '';
+            position: absolute;
+            top: 0; left: -100%;
+            width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s ease;
+        }
+        .btn:hover::after { left: 100%; }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(41, 128, 185, 0.6);
+        }
+
+        /* 呼吸燈動畫按鈕 (Step by Step) */
+        .btn-step {
+            background: linear-gradient(135deg, #27ae60, #2ecc71);
+            margin: 0 10px;
+            animation: pulse 2s infinite;
+        }
+        .btn-step:hover {
+            background: linear-gradient(135deg, #2ecc71, #27ae60);
+            box-shadow: 0 5px 15px rgba(46, 204, 113, 0.6);
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(46, 204, 113, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0); }
+        }
+
+        .nav-controls {
+            display: flex;
+            justify-content: center;
+            margin-top: 30px;
+        }
+
+        /* 內容區塊動畫 */
+        .step-content {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.5s ease-out;
+            display: none;
+        }
+        .step-content.active {
+            opacity: 1;
+            transform: translateY(0);
+            display: block;
+        }
+
+        /* 程式碼區塊樣式 */
+        pre {
+            background: #2d2d2d;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', Courier, monospace;
+            color: #f8f8f2;
+            overflow-x: auto;
+            border-left: 5px solid #4DA8DA;
+        }
+        .keyword { color: #ff79c6; }
+        .string { color: #f1fa8c; }
+        .comment { color: #6272a4; }
+        .type { color: #8be9fd; }
+        .func { color: #50fa7b; }
+
+        /* 解說列表樣式 */
+        .desc-section {
+            background: #252526;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 3px solid #f39c12;
+        }
+        .desc-section h3 { margin-top: 0; color: #f39c12; }
+        ul { padding-left: 20px; }
+        li { margin-bottom: 10px; }
+        
+        .progress-bar {
+            height: 6px;
+            background: #333;
+            border-radius: 3px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #4DA8DA;
+            width: 0%;
+            transition: width 0.4s ease;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header-controls">
+        <h1 id="main-title">C++ 基礎教學 (1/5)</h1>
+        <button class="btn" id="lang-btn" onclick="toggleLang()">Switch to English</button>
+    </div>
+    
+    <div class="progress-bar">
+        <div class="progress-fill" id="progress"></div>
+    </div>
+
+    <!-- 內容容器 -->
+    <div id="content-container"></div>
+
+    <!-- 底部控制按鈕 -->
+    <div class="nav-controls">
+        <button class="btn" id="prev-btn" onclick="changeStep(-1)" style="display: none;">上一步 / Prev</button>
+        <button class="btn btn-step" id="next-btn" onclick="changeStep(1)">下一步 / Next Step</button>
+    </div>
+</div>
+
+<script>
+    // 教學內容資料庫 (雙語)
+    const tutorialData = [
+        {
+            id: 1,
+            code: `<span class="keyword">#include</span> <span class="string">&lt;iostream&gt;</span> <span class="comment">// 引入標準輸入輸出函式庫</span>\n\n<span class="type">int</span> <span class="func">main</span>() {\n    <span class="comment">// 程式的進入點</span>\n    std::cout &lt;&lt; <span class="string">"Hello, World!"</span> &lt;&lt; std::endl;\n    <span class="keyword">return</span> 0; <span class="comment">// 告訴作業系統程式正常結束</span>\n}`,
+            zh: {
+                title: "(1) C++ 概論與環境建置",
+                desc: [
+                    "<b>編譯器原理：</b> 電腦只懂 0 和 1。C++ 是一種高階語言，我們需要「編譯器 (Compiler)」將程式碼翻譯成作業系統能懂的「機器碼 (Machine Code)」，才能產生 .exe 或執行檔。",
+                    "<b>IDE 設定：</b> 整合式開發環境（如 Visual Studio 或 VS Code）將編輯器、編譯器和除錯器綁在一起，讓你按下一鍵就能完成「編寫 -> 編譯 -> 執行」的流程。",
+                    "<b>執行流程：</b> 程式啟動時，作業系統會尋找 <code>main()</code> 函式，這是唯一的進入點。程式碼會由上往下執行，直到遇到 <code>return 0;</code>。",
+                    "<b>Hello World 解析：</b> <code>#include &lt;iostream&gt;</span> 是預處理指令，用來載入螢幕輸出的功能。<code>std::cout</code> 負責將字串推送到螢幕上。"
+                ]
+            },
+            en: {
+                title: "(1) C++ Intro & Environment Setup",
+                desc: [
+                    "<b>Compiler Basics:</b> Computers only understand 0s and 1s. A compiler translates human-readable C++ code into machine code (.exe or binaries) that the OS can execute.",
+                    "<b>IDE Setup:</b> An Integrated Development Environment (like Visual Studio) combines a text editor, compiler, and debugger, allowing you to build and run code with a single click.",
+                    "<b>Execution Flow:</b> The OS always looks for the <code>main()</code> function as the single entry point. Code executes top-to-bottom until it hits <code>return 0;</code>.",
+                    "<b>Hello World Breakdown:</b> <code>#include &lt;iostream&gt;</span> imports screen output capabilities. <code>std::cout</code> handles pushing the text to your monitor."
+                ]
+            }
+        },
+        {
+            id: 2,
+            code: `<span class="type">int</span> age = 20;            <span class="comment">// 整數 (通常 4 bytes)</span>\n<span class="type">float</span> weight = 65.5f;    <span class="comment">// 浮點數 (4 bytes)，字尾加 f</span>\n<span class="type">char</span> grade = <span class="string">'A'</span>;        <span class="comment">// 字元 (1 byte)，使用單引號</span>\n<span class="type">bool</span> isStudent = <span class="keyword">true</span>;   <span class="comment">// 布林值 (1 byte)，true 或 false</span>\n\n<span class="comment">// 變數生命週期展示</span>\n{\n    <span class="type">int</span> temp = 10; <span class="comment">// temp 被建立</span>\n} <span class="comment">// 大括號結束，temp 被銷毀回收記憶體</span>`,
+            zh: {
+                title: "(2) 變數與資料型態",
+                desc: [
+                    "<b>宣告與記憶體：</b> 宣告變數就像是向作業系統「租用」一塊記憶體。<code>int</code> 租用 4 bytes 來存整數，<code>char</code> 租用 1 byte 存單一字元。",
+                    "<b>布林值 (bool)：</b> 只有 <code>true</code> (真) 或 <code>false</code> (假) 兩種狀態，常用於條件判斷。",
+                    "<b>生命週期 (Lifecycle)：</b> 變數的壽命通常受限於它所在的「大括號 <code>{}</code>」內。一旦程式執行離開大括號，該變數佔用的記憶體就會被系統自動回收，這稱為區域變數。"
+                ]
+            },
+            en: {
+                title: "(2) Variables & Data Types",
+                desc: [
+                    "<b>Declaration & Memory:</b> Declaring a variable is like renting memory from the OS. <code>int</code> takes 4 bytes for integers, while <code>char</code> takes 1 byte for a single character.",
+                    "<b>Booleans (bool):</b> Holds only two states: <code>true</code> or <code>false</code>, heavily used in conditional logic.",
+                    "<b>Lifecycle:</b> A variable's life is bound to the curly braces <code>{}</code> it was created in. Once execution leaves the braces, the memory is destroyed and reclaimed (Local Variables)."
+                ]
+            }
+        },
+        {
+            id: 3,
+            code: `<span class="type">int</span> a = 10, b = 5;\n<span class="type">int</span> sum = a + b;         <span class="comment">// 算術運算：15</span>\n<span class="type">bool</span> check = (a > b) && (b > 0); <span class="comment">// 邏輯運算：AND 判斷</span>\n\n<span class="keyword">if</span> (a > 10) {\n    std::cout &lt;&lt; <span class="string">"a 大於 10"</span>;\n} <span class="keyword">else</span> {\n    std::cout &lt;&lt; <span class="string">"a 小於等於 10"</span>;\n}\n\n<span class="comment">// Switch 用於多重具體數值比對</span>\n<span class="type">int</span> choice = 2;\n<span class="keyword">switch</span>(choice) {\n    <span class="keyword">case</span> 1:\n        <span class="comment">// ...</span>\n        <span class="keyword">break</span>; <span class="comment">// 必須加上 break 否則會繼續往下執行</span>\n    <span class="keyword">case</span> 2:\n        std::cout &lt;&lt; <span class="string">"選擇了 2"</span>;\n        <span class="keyword">break</span>;\n}`,
+            zh: {
+                title: "(3) 運算子與流程控制",
+                desc: [
+                    "<b>算術與邏輯：</b> 支援 <code>+ - * / %</code>。邏輯運算子 <code>&&</code> (AND，兩者皆真才為真)、<code>||</code> (OR，一者為真即為真)。",
+                    "<b>if/else 判斷：</b> 程式的岔路。當括號內的條件為 true 時執行 if 區塊，否則執行 else 區塊。",
+                    "<b>switch 語法：</b> 當你要針對一個變數的多種「具體數值」進行判斷時（例如選單 1, 2, 3），使用 switch 比寫一堆 if/else 更乾淨。記得每個 case 結尾通常要加 <code>break</code> 否則會引發穿透效應 (Fall-through)。"
+                ]
+            },
+            en: {
+                title: "(3) Operators & Flow Control",
+                desc: [
+                    "<b>Math & Logic:</b> Standard math <code>+ - * / %</code>. Logical operators <code>&&</code> (AND, true if both are true) and <code>||</code> (OR, true if at least one is true).",
+                    "<b>if/else:</b> The branching path. If the condition in parentheses is true, the if-block runs; otherwise, the else-block runs.",
+                    "<b>switch statement:</b> Best for checking a single variable against multiple specific values (like a menu). Always remember to add <code>break</code> at the end of each case to prevent fall-through execution."
+                ]
+            }
+        },
+        {
+            id: 4,
+            code: `<span class="comment">// for 迴圈：明確知道要跑幾次 (起始值; 條件; 遞增)</span>\n<span class="keyword">for</span> (<span class="type">int</span> i = 0; i < 5; i++) {\n    <span class="keyword">if</span> (i == 2) <span class="keyword">continue</span>; <span class="comment">// 跳過 i=2 的這一回合</span>\n    std::cout &lt;&lt; i;\n}\n\n<span class="comment">// while 迴圈：只看條件，不知道跑幾次</span>\n<span class="type">int</span> hp = 100;\n<span class="keyword">while</span> (hp > 0) {\n    hp -= 20;\n    <span class="keyword">if</span> (hp <= 0) <span class="keyword">break</span>;   <span class="comment">// 強制打破並離開迴圈</span>\n}\n\n<span class="comment">// do-while：無論如何「至少」會執行一次</span>\n<span class="type">int</span> input;\n<span class="keyword">do</span> {\n    <span class="comment">// 接收使用者輸入...</span>\n    input = 0;\n} <span class="keyword">while</span> (input != 0);`,
+            zh: {
+                title: "(4) 迴圈結構",
+                desc: [
+                    "<b>應用時機：</b> <code>for</code> 適合「已知執行次數」的任務（如數到 10）。<code>while</code> 適合「未知次數，直到條件不成立」的任務（如遊戲主迴圈）。<code>do-while</code> 則是確保區塊內的程式碼「至少執行一次」（如登入系統的密碼輸入）。",
+                    "<b>continue 控制：</b> 遇到 continue，程式會立刻終止「當下這一回合」的迴圈，直接進入下一回合。",
+                    "<b>break 控制：</b> 遇到 break，不管迴圈條件滿不滿足，直接暴力摧毀並跳出整個迴圈結構。"
+                ]
+            },
+            en: {
+                title: "(4) Loop Structures",
+                desc: [
+                    "<b>When to use:</b> <code>for</code> is for known iteration counts. <code>while</code> is for unknown counts dependent on a condition (like a game loop). <code>do-while</code> guarantees the code runs <b>at least once</b> before checking the condition (like password prompts).",
+                    "<b>continue:</b> Instantly skips the rest of the current iteration and jumps to the next one.",
+                    "<b>break:</b> Forcefully destroys and exits the entire loop immediately, regardless of the loop's condition."
+                ]
+            }
+        },
+        {
+            id: 5,
+            code: `<span class="comment">// 函式宣告 (通常放在 main 之前或標頭檔)</span>\n<span class="type">int</span> <span class="func">addNumbers</span>(<span class="type">int</span> x, <span class="type">int</span> y);\n\n<span class="type">int</span> <span class="func">main</span>() {\n    <span class="type">int</span> result = <span class="func">addNumbers</span>(5, 10); <span class="comment">// 呼叫函式，5和10是傳值</span>\n    <span class="keyword">return</span> 0;\n}\n\n<span class="comment">// 函式定義 (實作內容)</span>\n<span class="type">int</span> <span class="func">addNumbers</span>(<span class="type">int</span> x, <span class="type">int</span> y) {\n    <span class="type">int</span> sum = x + y; <span class="comment">// sum 是區域變數，作用域僅限此函式</span>\n    <span class="keyword">return</span> sum;      <span class="comment">// 將結果回傳給呼叫者</span>\n}`,
+            zh: {
+                title: "(5) 函式 (Functions)",
+                desc: [
+                    "<b>模組化思維：</b> 將重複的邏輯打包成獨立的積木（函式），讓 <code>main()</code> 保持乾淨易讀。",
+                    "<b>宣告與定義：</b> 宣告（Declaration）是告訴編譯器有這個函式存在及其長相；定義（Definition）則是撰寫實際執行的程式碼邏輯。",
+                    "<b>參數傳值 (Pass by value)：</b> 當我們把 5 和 10 傳給函式時，C++ 是「影印」了一份資料交給 x 和 y。在函式內修改 x，不會影響外部原本的變數。",
+                    "<b>作用域 (Scope)：</b> 函式內的變數（如 <code>sum</code>）在外界是看不到的，這確保了資料的安全性與獨立性。"
+                ]
+            },
+            en: {
+                title: "(5) Functions",
+                desc: [
+                    "<b>Modular Thinking:</b> Packing repetitive logic into standalone building blocks (functions) to keep <code>main()</code> clean and readable.",
+                    "<b>Declaration vs Definition:</b> Declaration tells the compiler the function exists and its signature. Definition is the actual logic implementation.",
+                    "<b>Pass by Value:</b> When passing 5 and 10, C++ makes a \"photocopy\" of the data for x and y. Modifying x inside the function doesn't affect original external variables.",
+                    "<b>Scope:</b> Variables created inside a function (like <code>sum</code>) are invisible to the outside world, ensuring data safety and isolation."
+                ]
+            }
+        }
+    ];
+
+    let currentStep = 0;
+    let currentLang = 'zh'; 
+
+    const contentContainer = document.getElementById('content-container');
+    const mainTitle = document.getElementById('main-title');
+    const langBtn = document.getElementById('lang-btn');
+    const prevBtn = document.getElementById('prev-btn');
+    const nextBtn = document.getElementById('next-btn');
+    const progressBar = document.getElementById('progress');
+
+    // 渲染畫面邏輯
+    function renderStep() {
+        const data = tutorialData[currentStep];
+        const textData = data[currentLang];
+        
+        // 更新標題與進度條
+        const stepNum = currentStep + 1;
+        const totalSteps = tutorialData.length;
+        mainTitle.innerText = currentLang === 'zh' 
+            ? `C++ 基礎教學 (${stepNum}/${totalSteps})` 
+            : `C++ Basics Tutorial (${stepNum}/${totalSteps})`;
+            
+        progressBar.style.width = `${(stepNum / totalSteps) * 100}%`;
+
+        // 組合解說列表
+        const listItems = textData.desc.map(item => `<li>${item}</li>`).join('');
+
+        // 生成 HTML 內容
+        const htmlContent = `
+            <div class="step-content active" id="step-${data.id}">
+                <h2>${textData.title}</h2>
+                <div class="desc-section">
+                    <h3>${currentLang === 'zh' ? '運作原理解說' : 'How it works'}</h3>
+                    <ul>${listItems}</ul>
+                </div>
+                <pre><code>${data.code}</code></pre>
+            </div>
+        `;
+        
+        contentContainer.innerHTML = htmlContent;
+        updateButtons();
+    }
+
+    // 步驟切換邏輯
+    function changeStep(direction) {
+        currentStep += direction;
+        
+        // 邊界防呆處理
+        if(currentStep < 0) currentStep = 0;
+        if(currentStep >= tutorialData.length) currentStep = tutorialData.length - 1;
+        
+        renderStep();
+    }
+
+    // 語言切換邏輯
+    function toggleLang() {
+        currentLang = currentLang === 'zh' ? 'en' : 'zh';
+        langBtn.innerText = currentLang === 'zh' ? 'Switch to English' : '切換至繁體中文';
+        renderStep();
+    }
+
+    // 更新底部按鈕顯示狀態
+    function updateButtons() {
+        // 上一步按鈕顯示與否
+        prevBtn.style.display = currentStep === 0 ? 'none' : 'block';
+        prevBtn.innerText = currentLang === 'zh' ? '上一步' : 'Previous';
+        
+        // 下一步按鈕顯示與否
+        if (currentStep === tutorialData.length - 1) {
+            nextBtn.style.display = 'none'; // 最後一步隱藏下一步
+        } else {
+            nextBtn.style.display = 'block';
+            nextBtn.innerText = currentLang === 'zh' ? '下一步' : 'Next Step';
+        }
+    }
+
+    // 初始啟動
+    renderStep();
+</script>
+
+</body>
+</html>
