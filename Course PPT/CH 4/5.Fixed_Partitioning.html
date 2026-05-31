@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OS Memory: Fixed Partitioning</title>
+    <style>
+        :root {
+            --bg-light: #f8f9fa;
+            --text-dark: #2d3436;
+            --primary: #0984e3;
+            --os-bg: #2d3436;
+            --free-bg: #dfe6e9;
+            --frag-bg: #ff7675;
+            --process-a: #00b894;
+            --process-b: #e17055;
+            --border: #b2bec3;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background-color: var(--bg-light);
+            color: var(--text-dark);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px;
+            margin: 0;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+            max-width: 900px;
+            width: 100%;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+        }
+
+        .controls button {
+            padding: 10px 15px;
+            margin-left: 10px;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .btn-lang { background: #636e72; }
+        .btn-reset { background: #d63031; }
+        .btn-next { background: var(--primary); }
+        .btn-next:disabled { background: var(--border); cursor: not-allowed; }
+
+        .info-box {
+            background: #fff3cd;
+            border-left: 4px solid #fdcb6e;
+            padding: 15px;
+            margin-bottom: 30px;
+            font-size: 1.1rem;
+            min-height: 50px;
+        }
+
+        /* Simulation Layout */
+        .stage {
+            display: flex;
+            justify-content: center;
+            gap: 100px;
+            height: 550px;
+            position: relative;
+        }
+
+        /* Queue Area */
+        .queue {
+            width: 150px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            position: relative;
+        }
+        .queue-title { font-weight: bold; margin-bottom: 10px; }
+
+        .process {
+            width: 140px;
+            color: white;
+            border-radius: 6px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            position: absolute;
+            transition: all 1s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 10;
+        }
+        #proc-a { height: 90px; background: var(--process-a); top: 50px; }
+        #proc-b { height: 45px; background: var(--process-b); top: 160px; }
+
+        /* Memory Area */
+        .memory {
+            width: 250px;
+            border: 4px solid var(--os-bg);
+            display: flex;
+            flex-direction: column;
+            background: white;
+            position: relative;
+        }
+
+        .partition {
+            width: 100%;
+            border-bottom: 2px solid var(--border);
+            position: relative;
+            background: var(--free-bg);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #636e72;
+            font-weight: 600;
+            overflow: hidden;
+        }
+        .partition::before {
+            content: attr(data-label);
+            position: absolute;
+            left: -80px;
+            font-size: 0.85rem;
+            color: var(--text-dark);
+        }
+
+        .p-os { height: 60px; background: var(--os-bg); color: white; border-bottom: 4px solid #d63031;}
+        .p-1 { height: 60px; }  /* 2MB */
+        .p-2 { height: 120px; } /* 4MB */
+        .p-3 { height: 180px; } /* 8MB */
+        .p-4 { height: 60px; border-bottom: none; }  /* 2MB */
+
+        /* Internal Fragmentation Overlays */
+        .frag {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            background: repeating-linear-gradient(
+                45deg,
+                var(--frag-bg),
+                var(--frag-bg) 10px,
+                #ff9ff3 10px,
+                #ff9ff3 20px
+            );
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 0.8rem;
+            font-weight: bold;
+            opacity: 0;
+            transition: opacity 0.5s;
+            transition-delay: 1s; /* Show after process arrives */
+        }
+        #frag-a { height: 30px; } /* 1MB wasted in P2 */
+        #frag-b { height: 30px; } /* 1MB wasted in P1 */
+
+        /* CSS Animation Steps */
+        /* Step 1: Proc A to Partition 2 */
+        .step-1 #proc-a {
+            top: 124px; /* Align with P2 */
+            left: 250px; /* Move to memory */
+        }
+        .step-1 #frag-a { opacity: 1; }
+
+        /* Step 2: Proc B to Partition 1 */
+        .step-2 #proc-a { top: 124px; left: 250px; }
+        .step-2 #frag-a { opacity: 1; }
+        .step-2 #proc-b {
+            top: 64px; /* Align with P1 */
+            left: 250px;
+        }
+        .step-2 #frag-b { opacity: 1; }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1 id="ui-title">記憶體管理：固定長度分割區</h1>
+        <div class="controls">
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+            <button class="btn-reset" onclick="resetSim()">重置</button>
+            <button class="btn-next" id="btn-next" onclick="nextStep()">下一步</button>
+        </div>
+    </div>
+
+    <div class="info-box" id="ui-desc">
+        點擊「下一步」開始。記憶體已被劃分為四個大小固定的分割區。
+    </div>
+
+    <div class="stage" id="stage">
+        <div class="queue">
+            <div class="queue-title" id="ui-queue">等待佇列</div>
+            <div class="process" id="proc-a"><span id="ui-pa">行程 A (3MB)</span></div>
+            <div class="process" id="proc-b"><span id="ui-pb">行程 B (1MB)</span></div>
+        </div>
+
+        <div class="memory">
+            <div class="partition p-os">OS 區塊</div>
+            <div class="partition p-1" data-label="P1 (2MB)">
+                <span id="ui-free1">閒置</span>
+                <div class="frag" id="frag-b"><span id="ui-f1">內部碎裂 1MB</span></div>
+            </div>
+            <div class="partition p-2" data-label="P2 (4MB)">
+                <span id="ui-free2">閒置</span>
+                <div class="frag" id="frag-a"><span id="ui-f2">內部碎裂 1MB</span></div>
+            </div>
+            <div class="partition p-3" data-label="P3 (8MB)"><span id="ui-free3">閒置</span></div>
+            <div class="partition p-4" data-label="P4 (2MB)"><span id="ui-free4">閒置</span></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const i18n = {
+        'zh': {
+            'title': '作業系統記憶體管理：固定長度分割區',
+            'btn-next': '下一步',
+            'btn-reset': '重置',
+            'ui-queue': '等待佇列',
+            'ui-pa': '行程 A (3MB)',
+            'ui-pb': '行程 B (1MB)',
+            'free': '閒置',
+            'frag': '內部碎裂 1MB',
+            'desc-0': '<b>初始狀態：</b> 記憶體在開機時已被強硬劃分為四個固定大小的區塊。',
+            'desc-1': '<b>步驟 1：</b> <code>行程 A (3MB)</code> 放入 <code>P2 (4MB)</code>。因為分割區大小固定，多出的 1MB 空間會變成<b>內部碎裂 (Internal Fragmentation)</b>，無法給其他程式使用。',
+            'desc-2': '<b>步驟 2：</b> <code>行程 B (1MB)</code> 放入 <code>P1 (2MB)</code>，同樣產生了 1MB 的內部碎裂。即使系統總共有 2MB 的碎裂空間，卻無法合併給需要 2MB 的程式。'
+        },
+        'en': {
+            'title': 'OS Memory Management: Fixed Partitioning',
+            'btn-next': 'Next Step',
+            'btn-reset': 'Reset',
+            'ui-queue': 'Job Queue',
+            'ui-pa': 'Process A (3MB)',
+            'ui-pb': 'Process B (1MB)',
+            'free': 'Free',
+            'frag': 'Internal Frag 1MB',
+            'desc-0': '<b>Initial State:</b> Memory is divided into four fixed-size partitions at boot time.',
+            'desc-1': '<b>Step 1:</b> <code>Process A (3MB)</code> is placed in <code>P2 (4MB)</code>. The remaining 1MB becomes <b>Internal Fragmentation</b> and cannot be used by any other process.',
+            'desc-2': '<b>Step 2:</b> <code>Process B (1MB)</code> is placed in <code>P1 (2MB)</code>, creating another 1MB of internal fragmentation. These wasted spaces cannot be combined.'
+        }
+    };
+
+    let step = 0;
+    let lang = 'zh';
+
+    function toggleLang() {
+        lang = lang === 'zh' ? 'en' : 'zh';
+        updateUI();
+    }
+
+    function updateUI() {
+        const t = i18n[lang];
+        document.getElementById('ui-title').innerText = t['title'];
+        document.getElementById('btn-next').innerText = t['btn-next'];
+        document.getElementById('btn-reset').innerText = t['btn-reset'];
+        document.getElementById('ui-queue').innerText = t['ui-queue'];
+        document.getElementById('ui-pa').innerText = t['ui-pa'];
+        document.getElementById('ui-pb').innerText = t['ui-pb'];
+        document.getElementById('ui-f1').innerText = t['frag'];
+        document.getElementById('ui-f2').innerText = t['frag'];
+        
+        for(let i=1; i<=4; i++) {
+            document.getElementById('ui-free'+i).innerText = t['free'];
+        }
+        document.getElementById('ui-desc').innerHTML = t[`desc-${step}`];
+    }
+
+    function nextStep() {
+        if (step < 2) {
+            step++;
+            document.getElementById('stage').className = 'stage step-' + step;
+            if (step === 2) document.getElementById('btn-next').disabled = true;
+            updateUI();
+        }
+    }
+
+    function resetSim() {
+        step = 0;
+        document.getElementById('stage').className = 'stage';
+        document.getElementById('btn-next').disabled = false;
+        updateUI();
+    }
+
+    updateUI();
+</script>
+
+</body>
+</html>

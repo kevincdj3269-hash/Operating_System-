@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OS Memory: Buddy System</title>
+    <style>
+        :root {
+            --bg: #f8fafc;
+            --text: #1e293b;
+            --primary: #3b82f6;
+            --free: #f1f5f9;
+            --free-text: #64748b;
+            --used-a: #10b981; /* Green */
+            --used-b: #8b5cf6; /* Purple */
+            --merged: #dbeafe; /* Light Blue */
+            --merged-text: #1e3a8a;
+            --full-merged: #dcfce7; /* Light Green */
+            --full-merged-text: #166534;
+            --danger: #ef4444;
+            --border-color: #334155;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px;
+            margin: 0;
+            overflow-x: hidden;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+            max-width: 1000px;
+            width: 100%;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #cbd5e1;
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+        }
+
+        h1 { margin: 0; font-size: 1.6rem; color: var(--primary); }
+
+        .btn-group button {
+            padding: 8px 16px;
+            margin-left: 10px;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .btn-lang { background: #64748b; }
+        .btn-reset { background: var(--danger); }
+        .btn-next { background: var(--primary); }
+        .btn-next:disabled { background: #94a3b8; cursor: not-allowed; }
+
+        .info-box {
+            background: #eff6ff;
+            border-left: 5px solid var(--primary);
+            padding: 15px 20px;
+            font-size: 1.1rem;
+            margin-bottom: 30px;
+            min-height: 80px;
+            line-height: 1.6;
+        }
+
+        /* Stage Layout */
+        .stage {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #f8fafc;
+            padding: 30px;
+            border-radius: 12px;
+            min-height: 250px;
+        }
+
+        .queue-box {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #334155;
+            margin-bottom: 40px;
+            background: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            border: 2px solid #e2e8f0;
+        }
+
+        /* Memory Container */
+        .mem-container {
+            width: 100%;
+            height: 140px;
+            position: relative;
+            border: 4px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+            background: white;
+        }
+
+        /* Memory Blocks */
+        .blk {
+            position: absolute;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            opacity: 0; /* Hidden by default */
+            transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-sizing: border-box;
+            background: var(--free);
+            color: var(--free-text);
+        }
+
+        .sz { font-size: 1.3rem; margin-bottom: 5px; }
+        .lb { font-size: 0.95rem; }
+        .fg {
+            position: absolute;
+            bottom: 8px;
+            font-size: 0.8rem;
+            background: rgba(0,0,0,0.4);
+            padding: 3px 8px;
+            border-radius: 4px;
+            color: #fef08a;
+            opacity: 0; 
+            transition: opacity 0.5s;
+        }
+
+        /* Block Widths and Positions */
+        #b-1024 { width: 100%; left: 0; }
+        #b-512-R { width: 50%; left: 50%; }
+        #b-256-L { width: 25%; left: 0; border-right: 2px dashed var(--border-color); }
+        #b-256-R { width: 25%; left: 25%; border-right: 2px dashed var(--border-color); }
+        #b-128-L { width: 12.5%; left: 0; border-right: 2px dashed var(--border-color); }
+        #b-128-R { width: 12.5%; left: 12.5%; border-right: 2px dashed var(--border-color); }
+
+        /* --- CSS State Machine for Animations --- */
+
+        /* Step 0: Full Block */
+        .step-0 #b-1024 { opacity: 1; }
+
+        /* Step 1: Split to 128 (Load A) */
+        .step-1 #b-128-L { opacity: 1; background: var(--used-a); color: white; }
+        .step-1 #b-128-L .fg { opacity: 1; }
+        .step-1 #b-128-R { opacity: 1; }
+        .step-1 #b-256-R { opacity: 1; }
+        .step-1 #b-512-R { opacity: 1; }
+
+        /* Step 2: Load B into 256 */
+        .step-2 #b-128-L { opacity: 1; background: var(--used-a); color: white; }
+        .step-2 #b-128-L .fg { opacity: 1; }
+        .step-2 #b-128-R { opacity: 1; }
+        .step-2 #b-256-R { opacity: 1; background: var(--used-b); color: white; }
+        .step-2 #b-256-R .fg { opacity: 1; }
+        .step-2 #b-512-R { opacity: 1; }
+
+        /* Step 3: Free A and Merge to 256 */
+        .step-3 #b-256-L { opacity: 1; background: var(--merged); color: var(--merged-text); }
+        .step-3 #b-256-R { opacity: 1; background: var(--used-b); color: white; }
+        .step-3 #b-256-R .fg { opacity: 1; }
+        .step-3 #b-512-R { opacity: 1; }
+
+        /* Step 4: Free B and Fully Merge */
+        .step-4 #b-1024 { opacity: 1; background: var(--full-merged); color: var(--full-merged-text); }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1 id="ui-title">記憶體管理：夥伴系統 (Buddy System)</h1>
+        <div class="btn-group">
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+            <button class="btn-reset" onclick="resetSim()">重置</button>
+            <button class="btn-next" id="btn-next" onclick="nextStep()">下一步</button>
+        </div>
+    </div>
+
+    <div class="info-box" id="ui-desc"></div>
+
+    <div class="stage step-0" id="stage">
+        
+        <div class="queue-box" id="ui-queue"></div>
+        
+        <div class="mem-container">
+            <div class="blk" id="b-1024">
+                <span class="sz">1024KB</span>
+                <span class="lb" id="lbl-1024">閒置</span>
+            </div>
+
+            <div class="blk" id="b-512-R">
+                <span class="sz">512KB</span>
+                <span class="lb" id="lbl-512-R">閒置</span>
+            </div>
+
+            <div class="blk" id="b-256-L">
+                <span class="sz">256KB</span>
+                <span class="lb" id="lbl-256-L">合併 (閒置)</span>
+            </div>
+
+            <div class="blk" id="b-256-R">
+                <span class="sz">256KB</span>
+                <span class="lb" id="lbl-256-R">閒置</span>
+                <span class="fg" id="fg-b">碎裂: 16KB</span>
+            </div>
+
+            <div class="blk" id="b-128-L">
+                <span class="sz">128KB</span>
+                <span class="lb" id="lbl-128-L">行程 A</span>
+                <span class="fg" id="fg-a">碎裂: 28KB</span>
+            </div>
+
+            <div class="blk" id="b-128-R">
+                <span class="sz">128KB</span>
+                <span class="lb" id="lbl-128-R">閒置</span>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    const i18n = {
+        'zh': {
+            'title': '記憶體管理：夥伴系統 (Buddy System)',
+            'btn-next': '下一步',
+            'btn-reset': '重置',
+            'lbl-free': '閒置',
+            'lbl-procA': '行程 A',
+            'lbl-procB': '行程 B',
+            'lbl-merge': '合併完成 (閒置)',
+            'lbl-full': '完全合併 (閒置)',
+            'fg-a': '碎裂: 28KB',
+            'fg-b': '碎裂: 16KB',
+            'queue-0': '目前狀態：系統就緒',
+            'queue-1': '目前操作：請求 100KB (行程 A)',
+            'queue-2': '目前操作：請求 240KB (行程 B)',
+            'queue-3': '目前操作：釋放行程 A (回收 128KB)',
+            'queue-4': '目前操作：釋放行程 B (連鎖回收)',
+            'desc-0': '<b>初始狀態：</b> 系統擁有一塊完整的 1024KB 連續閒置記憶體。',
+            'desc-1': '<b>步驟 1 (載入 A)：</b> 行程 A 請求 100KB。最接近的 2 的次方是 128KB。系統將 1024KB 不斷對半切割 (1024→512→256→128)。A 載入 128KB 區塊，產生 28KB 內部碎裂。',
+            'desc-2': '<b>步驟 2 (載入 B)：</b> 行程 B 請求 240KB，需要 256KB 區塊。系統剛好有一個剛剛切剩的 256KB 閒置區塊，直接配置給 B。',
+            'desc-3': '<b>步驟 3 (釋放 A 與合併)：</b> 行程 A 結束並釋放。系統立刻尋找其相鄰的「夥伴(另一個 128KB)」，發現它也是空閒的，兩者立刻<b>牽手合併 (Coalesce)</b> 成 256KB。',
+            'desc-4': '<b>步驟 4 (釋放 B 與連鎖合併)：</b> 行程 B 釋放。觸發連鎖合併機制：256+256 變回 512，接著 512+512 變回 1024。記憶體完美恢復為一大塊！'
+        },
+        'en': {
+            'title': 'Memory Management: Buddy System',
+            'btn-next': 'Next Step',
+            'btn-reset': 'Reset',
+            'lbl-free': 'Free',
+            'lbl-procA': 'Process A',
+            'lbl-procB': 'Process B',
+            'lbl-merge': 'Merged (Free)',
+            'lbl-full': 'Fully Merged (Free)',
+            'fg-a': 'Frag: 28KB',
+            'fg-b': 'Frag: 16KB',
+            'queue-0': 'Status: System Ready',
+            'queue-1': 'Op: Request 100KB (Proc A)',
+            'queue-2': 'Op: Request 240KB (Proc B)',
+            'queue-3': 'Op: Free Process A',
+            'queue-4': 'Op: Free Process B (Chain Merge)',
+            'desc-0': '<b>Initial State:</b> The system has a single contiguous 1024KB free memory block.',
+            'desc-1': '<b>Step 1 (Load A):</b> Process A requests 100KB. Closest power of 2 is 128KB. System splits 1024KB repeatedly (1024→512→256→128). A is loaded, causing 28KB internal fragmentation.',
+            'desc-2': '<b>Step 2 (Load B):</b> Process B requests 240KB. Needs a 256KB block. An exact 256KB free block is available from the previous split and is allocated to B.',
+            'desc-3': '<b>Step 3 (Free A & Coalesce):</b> Process A frees 128KB. Its adjacent "buddy" (128KB) is also free, so they immediately <b>coalesce</b> into a 256KB free block.',
+            'desc-4': '<b>Step 4 (Free B & Chain Merge):</b> Process B frees 256KB. Triggers chain merge: 256+256=512, then 512+512=1024. Memory fully restored!'
+        }
+    };
+
+    let step = 0;
+    let lang = 'zh';
+
+    function toggleLang() {
+        lang = lang === 'zh' ? 'en' : 'zh';
+        updateUI();
+    }
+
+    function updateUI() {
+        const t = i18n[lang];
+        
+        // Buttons and Titles
+        document.getElementById('ui-title').innerText = t['title'];
+        document.getElementById('btn-next').innerText = t['btn-next'];
+        document.getElementById('btn-reset').innerText = t['btn-reset'];
+
+        // Descriptions
+        document.getElementById('ui-queue').innerText = t[`queue-${step}`];
+        document.getElementById('ui-desc').innerHTML = t[`desc-${step}`];
+
+        // Static Labels Update
+        document.getElementById('lbl-1024').innerText = (step === 0) ? t['lbl-free'] : t['lbl-full'];
+        document.getElementById('lbl-512-R').innerText = t['lbl-free'];
+        document.getElementById('lbl-256-L').innerText = t['lbl-merge'];
+        document.getElementById('lbl-128-L').innerText = t['lbl-procA'];
+        document.getElementById('lbl-128-R').innerText = t['lbl-free'];
+        
+        document.getElementById('fg-a').innerText = t['fg-a'];
+        document.getElementById('fg-b').innerText = t['fg-b'];
+
+        // Dynamic Label Update for 256-R (Changes from Free to Proc B in Step 2)
+        if (step >= 2 && step <= 3) {
+            document.getElementById('lbl-256-R').innerText = t['lbl-procB'];
+        } else {
+            document.getElementById('lbl-256-R').innerText = t['lbl-free'];
+        }
+    }
+
+    function nextStep() {
+        if (step < 4) {
+            step++;
+            // The class 'step-X' controls ALL the animations purely via CSS!
+            document.getElementById('stage').className = 'stage step-' + step;
+            if (step === 4) document.getElementById('btn-next').disabled = true;
+            updateUI();
+        }
+    }
+
+    function resetSim() {
+        step = 0;
+        document.getElementById('stage').className = 'stage step-0';
+        document.getElementById('btn-next').disabled = false;
+        updateUI();
+    }
+
+    // Initialize UI on load
+    updateUI();
+</script>
+
+</body>
+</html>

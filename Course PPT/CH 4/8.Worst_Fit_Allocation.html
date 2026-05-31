@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OS Memory Management: Worst-Fit</title>
+    <style>
+        :root {
+            --bg-color: #fdf8f5;
+            --text-color: #2d3748;
+            --primary: #dd6b20; /* Deep Orange for Worst-Fit */
+            --secondary: #e53e3e;
+            --success: #38a169;
+            --info: #3182ce;
+            --hole-bg: #edf2f7;
+            --border: #cbd5e0;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px;
+            margin: 0;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+            max-width: 900px;
+            width: 100%;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 20px;
+            margin-bottom: 25px;
+        }
+
+        h1 { margin: 0; font-size: 1.6rem; color: var(--primary); }
+
+        .btn-group button {
+            padding: 10px 18px;
+            margin-left: 10px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-lang { background: #718096; }
+        .btn-reset { background: var(--secondary); }
+        .btn-next { background: var(--primary); }
+        .btn-next:disabled { background: #a0aec0; cursor: not-allowed; }
+
+        .info-box {
+            background: #fffaf0;
+            border-left: 5px solid var(--primary);
+            padding: 15px 20px;
+            font-size: 1.1rem;
+            margin-bottom: 30px;
+            line-height: 1.6;
+            min-height: 80px;
+        }
+
+        /* Stage Layout */
+        .stage {
+            display: flex;
+            justify-content: center;
+            gap: 80px;
+            height: 500px;
+            position: relative;
+        }
+
+        /* Queue Area */
+        .queue {
+            width: 160px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            z-index: 10;
+        }
+        .q-title { font-weight: bold; margin-bottom: 20px; color: #4a5568; }
+        
+        .process {
+            width: 140px;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.15);
+            position: absolute;
+            transition: all 1s cubic-bezier(0.34, 1.56, 0.64, 1);
+            z-index: 20;
+        }
+        #proc-a { height: 50px; background: var(--info); top: 60px; }
+        #proc-b { height: 60px; background: var(--success); top: 130px; }
+
+        /* Memory Area */
+        .memory-map {
+            width: 280px;
+            border: 4px solid #2d3748;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            border-radius: 4px;
+            position: relative;
+        }
+        
+        .mem-title {
+            background: #2d3748;
+            color: white;
+            text-align: center;
+            padding: 10px;
+            font-weight: bold;
+            margin: 0;
+        }
+
+        .hole {
+            width: 100%;
+            background: var(--hole-bg);
+            border-bottom: 2px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 15px;
+            box-sizing: border-box;
+            position: relative;
+            transition: all 0.5s;
+        }
+        .hole-label { font-weight: bold; color: #4a5568; z-index: 5; }
+
+        /* Search Highlight Tooltips */
+        .search-badge {
+            background: #fff;
+            border: 2px solid var(--primary);
+            color: var(--primary);
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            opacity: 0;
+            transform: translateX(-15px);
+            transition: all 0.5s;
+            z-index: 5;
+        }
+
+        #H1 { height: 75px; }  /* 15MB */
+        #H2 { height: 50px; }  /* 10MB */
+        #H3 { height: 150px; } /* 30MB */
+        #H4 { height: 65px; border-bottom: none; } /* 13MB */
+
+        /* --- Animation Steps --- */
+        
+        /* Step 1: Scan for A, Highlight H3 */
+        .step-1 #proc-a { transform: scale(1.05); }
+        .step-1 #H3 .search-badge { opacity: 1; transform: translateX(0); background: var(--primary); color: white;}
+        .step-1 #H3 { border: 3px solid var(--primary); }
+
+        /* Step 2: Move A to H3 */
+        .step-2 #proc-a { left: 240px; top: 185px; } /* Align with top of H3 */
+        .step-2 #H3 { background: linear-gradient(to bottom, #bee3f8 40%, var(--hole-bg) 40%); }
+        .step-2 #H3 .search-badge { opacity: 0; }
+        
+        /* Step 3: Scan for B, Highlight H3 Remainder */
+        .step-3 #proc-a { left: 240px; top: 185px; }
+        .step-3 #H3 { background: linear-gradient(to bottom, #bee3f8 40%, var(--hole-bg) 40%); }
+        .step-3 #proc-b { transform: scale(1.05); }
+        .step-3 #H3 .search-badge { opacity: 1; transform: translateX(0); background: var(--primary); color: white;}
+        .step-3 #H3 { border: 3px solid var(--primary); }
+
+        /* Step 4: Move B to H3 Remainder */
+        .step-4 #proc-a { left: 240px; top: 185px; }
+        .step-4 #proc-b { left: 240px; top: 235px; } /* Align under A in H3 */
+        .step-4 #H3 { background: linear-gradient(to bottom, #bee3f8 40%, #c6f6d5 40%, #c6f6d5 90%, var(--hole-bg) 90%); }
+        .step-4 #H3 .search-badge { opacity: 0; }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1 id="ui-title">記憶體管理：最不適法 (Worst-Fit)</h1>
+        <div class="btn-group">
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+            <button class="btn-reset" onclick="resetSim()">重置</button>
+            <button class="btn-next" id="btn-next" onclick="nextStep()">下一步</button>
+        </div>
+    </div>
+
+    <div class="info-box" id="ui-desc">
+        點擊「下一步」開始。記憶體目前有四個大小不同的空閒區塊。
+    </div>
+
+    <div class="stage" id="stage">
+        <div class="queue">
+            <div class="q-title" id="ui-queue">等待佇列</div>
+            <div class="process" id="proc-a">行程 A (12MB)</div>
+            <div class="process" id="proc-b">行程 B (15MB)</div>
+        </div>
+
+        <div class="memory-map">
+            <div class="mem-title" id="ui-mem">實體記憶體</div>
+            <div class="hole" id="H1">
+                <span class="hole-label">H1 (15MB)</span>
+            </div>
+            <div class="hole" id="H2">
+                <span class="hole-label">H2 (10MB)</span>
+            </div>
+            <div class="hole" id="H3">
+                <span class="hole-label" id="lbl-h3">H3 (30MB)</span>
+                <span class="search-badge" id="badge-h3">最大空間</span>
+            </div>
+            <div class="hole" id="H4">
+                <span class="hole-label">H4 (13MB)</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const i18n = {
+        'zh': {
+            'title': '作業系統記憶體管理：最不適法 (Worst-Fit)',
+            'btn-next': '下一步',
+            'btn-reset': '重置',
+            'ui-queue': '等待佇列',
+            'ui-mem': '實體記憶體',
+            'proc-a': '行程 A (12MB)',
+            'proc-b': '行程 B (15MB)',
+            'desc-0': '<b>初始狀態：</b> 準備將兩個行程載入記憶體。',
+            'desc-1': '<b>步驟 1 (尋找最大)：</b> 為了裝載 12MB 的行程 A，系統掃描並鎖定最大的空閒區塊：<b>H3 (30MB)</b>。',
+            'desc-2': '<b>步驟 2 (配置 A)：</b> 將 A 放入 H3。因為 H3 夠大，即使被切走 12MB，<b>還剩下 18MB 的完整可用空間</b> (避免了微小碎片的產生)。',
+            'desc-3': '<b>步驟 3 (尋找最大)：</b> 為了裝載 15MB 的行程 B，系統再次尋找最大空間。此時最大的區塊正是剛剛 H3 剩下的 <b>18MB</b>！',
+            'desc-4': '<b>步驟 4 (配置 B)：</b> 將 B 放入剩餘的 18MB 空間中。這展示了 Worst-Fit 的核心思想：藉由切最大的區塊，讓剩下的空間依然夠大給別人用。',
+            'badge-h3-1': '最大空間 (30MB)',
+            'badge-h3-3': '最大空間 (剩18MB)',
+            'lbl-h3': 'H3 (30MB)',
+            'lbl-h3-step2': 'H3 <span style="font-size:0.8rem; font-weight:normal;">(A佔12 | 剩18)</span>',
+            'lbl-h3-step4': 'H3 <span style="font-size:0.8rem; font-weight:normal;">(A佔12 | B佔15 | 剩3)</span>'
+        },
+        'en': {
+            'title': 'OS Memory Management: Worst-Fit',
+            'btn-next': 'Next Step',
+            'btn-reset': 'Reset',
+            'ui-queue': 'Job Queue',
+            'ui-mem': 'Physical Memory',
+            'proc-a': 'Process A (12MB)',
+            'proc-b': 'Process B (15MB)',
+            'desc-0': '<b>Initial State:</b> Ready to load two processes.',
+            'desc-1': '<b>Step 1 (Find Largest):</b> To load Process A (12MB), the system scans and targets the largest hole: <b>H3 (30MB)</b>.',
+            'desc-2': '<b>Step 2 (Allocate A):</b> A is placed in H3. Because H3 is huge, it leaves a <b>large 18MB remainder</b> (avoiding tiny fragments).',
+            'desc-3': '<b>Step 3 (Find Largest):</b> To load Process B (15MB), the system scans again. The largest available hole is now the <b>18MB</b> remainder of H3!',
+            'desc-4': '<b>Step 4 (Allocate B):</b> B is placed in the 18MB remainder. This is the core of Worst-Fit: slice the biggest piece so the leftovers are still useful.',
+            'badge-h3-1': 'Largest (30MB)',
+            'badge-h3-3': 'Largest (18MB left)',
+            'lbl-h3': 'H3 (30MB)',
+            'lbl-h3-step2': 'H3 <span style="font-size:0.8rem; font-weight:normal;">(A:12 | Free:18)</span>',
+            'lbl-h3-step4': 'H3 <span style="font-size:0.8rem; font-weight:normal;">(A:12 | B:15 | Free:3)</span>'
+        }
+    };
+
+    let step = 0;
+    let lang = 'zh';
+
+    function toggleLang() {
+        lang = lang === 'zh' ? 'en' : 'zh';
+        updateUI();
+    }
+
+    function updateUI() {
+        const t = i18n[lang];
+        document.getElementById('ui-title').innerText = t['title'];
+        document.getElementById('btn-next').innerText = t['btn-next'];
+        document.getElementById('btn-reset').innerText = t['btn-reset'];
+        document.getElementById('ui-queue').innerText = t['ui-queue'];
+        document.getElementById('ui-mem').innerText = t['ui-mem'];
+        document.getElementById('proc-a').innerText = t['proc-a'];
+        document.getElementById('proc-b').innerText = t['proc-b'];
+
+        document.getElementById('ui-desc').innerHTML = t[`desc-${step}`];
+
+        // Dynamic Badge Text
+        if(step === 1) document.getElementById('badge-h3').innerText = t['badge-h3-1'];
+        if(step === 3) document.getElementById('badge-h3').innerText = t['badge-h3-3'];
+
+        // Dynamic H3 Label Text
+        if(step < 2) {
+            document.getElementById('lbl-h3').innerHTML = t['lbl-h3'];
+        } else if (step >= 2 && step < 4) {
+            document.getElementById('lbl-h3').innerHTML = t['lbl-h3-step2'];
+        } else {
+            document.getElementById('lbl-h3').innerHTML = t['lbl-h3-step4'];
+        }
+    }
+
+    function nextStep() {
+        if (step < 4) {
+            step++;
+            // Remove previous step classes to ensure clean transitions
+            document.getElementById('stage').className = 'stage step-' + step;
+            if (step === 4) document.getElementById('btn-next').disabled = true;
+            updateUI();
+        }
+    }
+
+    function resetSim() {
+        step = 0;
+        document.getElementById('stage').className = 'stage';
+        document.getElementById('btn-next').disabled = false;
+        updateUI();
+    }
+
+    updateUI();
+</script>
+
+</body>
+</html>

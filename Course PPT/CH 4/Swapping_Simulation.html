@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OS Memory Management: Swapping</title>
+    <style>
+        :root {
+            --bg: #f8fafc;
+            --text: #1e293b;
+            --ram-border: #3b82f6; /* Blue */
+            --disk-border: #64748b; /* Slate */
+            --proc-a: #10b981; /* Green */
+            --proc-b: #8b5cf6; /* Purple */
+            --proc-c: #f59e0b; /* Amber */
+            --warning: #ef4444; /* Red */
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px;
+            margin: 0;
+            overflow-x: hidden;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+            max-width: 950px;
+            width: 100%;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #cbd5e1;
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+        }
+
+        h1 { margin: 0; font-size: 1.6rem; color: #0f172a; }
+
+        .btn-group button {
+            padding: 8px 16px;
+            margin-left: 10px;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .btn-lang { background: #64748b; }
+        .btn-reset { background: var(--warning); }
+        .btn-next { background: #3b82f6; }
+        .btn-next:disabled { background: #94a3b8; cursor: not-allowed; }
+
+        .info-box {
+            background: #eff6ff;
+            border-left: 5px solid var(--ram-border);
+            padding: 15px 20px;
+            font-size: 1.1rem;
+            margin-bottom: 30px;
+            min-height: 80px;
+            line-height: 1.5;
+        }
+
+        /* Stage Layout */
+        .stage {
+            display: flex;
+            justify-content: space-around;
+            align-items: flex-end; /* Align to bottom */
+            position: relative;
+            height: 500px;
+            padding: 0 10px;
+        }
+
+        .col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 2;
+        }
+        .col-title { font-weight: bold; margin-bottom: 15px; font-size: 1.1rem; color: #334155;}
+        .col-subtitle { font-size: 0.85rem; color: #64748b; margin-bottom: 10px; text-align: center;}
+
+        /* Storage Containers */
+        .storage {
+            background: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end; /* Stack from bottom */
+            position: relative;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.05);
+            padding-bottom: 5px;
+        }
+
+        .ram-box {
+            width: 200px;
+            height: 300px;
+            border: 4px solid var(--ram-border);
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+        }
+        .ram-cap {
+            position: absolute; top: -30px; width: 100%; text-align: center;
+            font-weight: bold; color: var(--ram-border);
+            border-top: 4px dashed var(--ram-border);
+        }
+
+        .disk-box {
+            width: 250px;
+            height: 400px;
+            border: 4px solid var(--disk-border);
+            border-radius: 8px;
+            background: #f8fafc;
+        }
+
+        /* Animated Process Blocks */
+        .process {
+            width: 180px;
+            color: white;
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 6px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            position: absolute;
+            transition: all 1.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+            z-index: 10;
+        }
+
+        #proc-a { background: var(--proc-a); height: 140px; } /* 2GB */
+        #proc-b { background: var(--proc-b); height: 140px; } /* 2GB */
+        #proc-c { background: var(--proc-c); height: 210px; } /* 3GB */
+
+        /* Start Positions */
+        #proc-a { bottom: 5px; left: 15px; } /* In RAM */
+        #proc-b { bottom: 150px; left: 15px; } /* In RAM */
+        #proc-c { top: -180px; left: 15px; } /* In Queue above RAM */
+
+        /* Action Labels (Swap In/Out) */
+        .action-label {
+            position: absolute;
+            top: 200px;
+            left: 320px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--ram-border);
+            opacity: 0;
+            transition: opacity 0.3s;
+            text-align: center;
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            z-index: 5;
+        }
+
+        /* Warnings */
+        .mem-warning {
+            position: absolute;
+            top: 100px;
+            left: -20px;
+            color: var(--warning);
+            font-weight: bold;
+            background: #fee2e2;
+            padding: 5px 10px;
+            border-radius: 4px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        /* --- Steps Animation CSS --- */
+        
+        /* Step 1: Queue C, RAM is full */
+        .step-1 #proc-c { top: 0px; left: 15px; }
+        .step-1 .mem-warning { opacity: 1; }
+
+        /* Step 2: Swap Out A */
+        .step-2 #proc-c { top: 0px; left: 15px; }
+        .step-2 .mem-warning { opacity: 1; }
+        .step-2 #proc-a { left: 450px; bottom: 5px; width: 230px;} /* Move to Disk */
+        .step-2 #lbl-out-a { opacity: 1; animation: fadeOut 2s forwards; }
+
+        /* Step 3: Swap Out B */
+        .step-3 #proc-c { top: 0px; left: 15px; }
+        .step-3 #proc-a { left: 450px; bottom: 5px; width: 230px;}
+        .step-3 #proc-b { left: 450px; bottom: 150px; width: 230px;} /* Move to Disk */
+        .step-3 #lbl-out-b { opacity: 1; animation: fadeOut 2s forwards; }
+
+        /* Step 4: Swap In C */
+        .step-4 #proc-a { left: 450px; bottom: 5px; width: 230px;}
+        .step-4 #proc-b { left: 450px; bottom: 150px; width: 230px;}
+        .step-4 #proc-c { top: 290px; left: 15px; } /* Move to RAM bottom */
+        .step-4 #lbl-in-c { opacity: 1; animation: fadeOut 2s forwards; }
+
+        @keyframes fadeOut {
+            0%, 70% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1 id="ui-title">記憶體管理：置換 (Swapping)</h1>
+        <div class="btn-group">
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+            <button class="btn-reset" onclick="resetSim()">重置</button>
+            <button class="btn-next" id="btn-next" onclick="nextStep()">下一步</button>
+        </div>
+    </div>
+
+    <div class="info-box" id="ui-desc"></div>
+
+    <div class="stage" id="stage">
+        
+        <div class="action-label" id="lbl-out-a">Swap Out A ➔</div>
+        <div class="action-label" id="lbl-out-b">Swap Out B ➔</div>
+        <div class="action-label" id="lbl-in-c">⬇ Swap In C</div>
+
+        <!-- Left: RAM -->
+        <div class="col" style="position: relative;">
+            <div class="col-title" id="ui-ram-title" style="margin-bottom: 250px;">實體記憶體 (RAM)</div>
+            
+            <div class="mem-warning" id="ui-warn">空間不足!</div>
+
+            <!-- Process C Waiting outside RAM initially -->
+            <div class="process" id="proc-c"><span id="ui-txt-c">行程 C (3GB)</span></div>
+
+            <div class="storage ram-box">
+                <div class="ram-cap" id="ui-cap">容量上限: 4GB</div>
+                <div class="process" id="proc-b"><span id="ui-txt-b">行程 B (2GB)</span></div>
+                <div class="process" id="proc-a"><span id="ui-txt-a">行程 A (2GB)</span></div>
+            </div>
+        </div>
+
+        <!-- Right: Disk/Swap Space -->
+        <div class="col">
+            <div class="col-title" id="ui-disk-title">硬碟 / 置換空間 (Swap Space)</div>
+            <div class="col-subtitle" id="ui-disk-sub">(容量極大，但存取速度極慢)</div>
+            <div class="storage disk-box">
+                <!-- Swapped out processes will move here -->
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    const i18n = {
+        'zh': {
+            'title': '記憶體管理：置換 (Swapping)',
+            'btn-next': '下一步',
+            'btn-reset': '重置',
+            'ui-ram-title': '實體記憶體 (RAM)',
+            'ui-cap': '容量上限: 4GB',
+            'ui-warn': '空間不足!',
+            'ui-txt-a': '行程 A (2GB)',
+            'ui-txt-b': '行程 B (2GB)',
+            'ui-txt-c': '行程 C (3GB)',
+            'ui-disk-title': '硬碟 / 置換空間 (Swap Space)',
+            'ui-disk-sub': '(容量極大，但存取速度極慢)',
+            
+            'desc-0': '<b>初始狀態：</b> 實體記憶體 (RAM) 的總容量為 4GB。目前已經載入了行程 A (2GB) 與行程 B (2GB)，<b>記憶體已滿</b>。',
+            'desc-1': '<b>步驟 1 (載入請求)：</b> 使用者想要開啟一個大型的行程 C，它需要 3GB 的空間。系統發現 RAM 空間不足，準備啟動 Swapping 機制。',
+            'desc-2': '<b>步驟 2 (Swap Out)：</b> 作業系統將暫時閒置的行程 A 整個「搬移(複製)」到硬碟的置換空間中。RAM 空出了 2GB，但這對需要 3GB 的 C 來說還是不夠。',
+            'desc-3': '<b>步驟 3 (再次 Swap Out)：</b> OS 將行程 B 也搬移到硬碟。現在 RAM 徹底清空，空出了完整的 4GB 空間。',
+            'desc-4': '<b>步驟 4 (Swap In)：</b> RAM 有足夠空間了！OS 將行程 C 載入到實體記憶體中開始執行。我們用 4GB 的 RAM 成功容納了總共 7GB 的程式！'
+        },
+        'en': {
+            'title': 'Memory Management: Swapping',
+            'btn-next': 'Next Step',
+            'btn-reset': 'Reset',
+            'ui-ram-title': 'Physical Memory (RAM)',
+            'ui-cap': 'Max Capacity: 4GB',
+            'ui-warn': 'Not Enough Space!',
+            'ui-txt-a': 'Process A (2GB)',
+            'ui-txt-b': 'Process B (2GB)',
+            'ui-txt-c': 'Process C (3GB)',
+            'ui-disk-title': 'Hard Disk / Swap Space',
+            'ui-disk-sub': '(Huge capacity, but very slow)',
+            
+            'desc-0': '<b>Initial State:</b> Physical RAM capacity is 4GB. It is currently fully occupied by Process A (2GB) and Process B (2GB). <b>RAM is FULL</b>.',
+            'desc-1': '<b>Step 1 (Load Request):</b> User wants to open Process C, which requires 3GB. The system detects insufficient RAM and prepares to Swap.',
+            'desc-2': '<b>Step 2 (Swap Out A):</b> The OS moves (copies) the idle Process A entirely to the Disk\'s Swap Space. RAM frees up 2GB, but this is still not enough for C.',
+            'desc-3': '<b>Step 3 (Swap Out B):</b> The OS moves Process B to the Disk as well. RAM is now completely empty with 4GB free.',
+            'desc-4': '<b>Step 4 (Swap In C):</b> Enough space is available! The OS loads Process C into RAM to execute. We successfully managed 7GB of programs using only 4GB of RAM!'
+        }
+    };
+
+    let step = 0;
+    let lang = 'zh';
+
+    function toggleLang() {
+        lang = lang === 'zh' ? 'en' : 'zh';
+        updateUI();
+    }
+
+    function updateUI() {
+        const t = i18n[lang];
+        document.getElementById('ui-title').innerText = t['title'];
+        document.getElementById('btn-next').innerText = t['btn-next'];
+        document.getElementById('btn-reset').innerText = t['btn-reset'];
+        
+        document.getElementById('ui-ram-title').innerText = t['ui-ram-title'];
+        document.getElementById('ui-cap').innerText = t['ui-cap'];
+        document.getElementById('ui-warn').innerText = t['ui-warn'];
+        
+        document.getElementById('ui-txt-a').innerText = t['ui-txt-a'];
+        document.getElementById('ui-txt-b').innerText = t['ui-txt-b'];
+        document.getElementById('ui-txt-c').innerText = t['ui-txt-c'];
+        
+        document.getElementById('ui-disk-title').innerText = t['ui-disk-title'];
+        document.getElementById('ui-disk-sub').innerText = t['ui-disk-sub'];
+        
+        document.getElementById('ui-desc').innerHTML = t[`desc-${step}`];
+    }
+
+    function nextStep() {
+        if (step < 4) {
+            step++;
+            document.getElementById('stage').className = 'stage step-' + step;
+            if (step === 4) document.getElementById('btn-next').disabled = true;
+            updateUI();
+        }
+    }
+
+    function resetSim() {
+        step = 0;
+        document.getElementById('stage').className = 'stage';
+        document.getElementById('btn-next').disabled = false;
+        
+        // Reset animations by cloning action labels (CSS trick)
+        const labels = ['lbl-out-a', 'lbl-out-b', 'lbl-in-c'];
+        labels.forEach(id => {
+            const el = document.getElementById(id);
+            const newEl = el.cloneNode(true);
+            el.parentNode.replaceChild(newEl, el);
+        });
+
+        updateUI();
+    }
+
+    // Init
+    updateUI();
+</script>
+
+</body>
+</html>

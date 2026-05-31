@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OS Memory Management: Paging</title>
+    <style>
+        :root {
+            --bg-color: #f1f5f9;
+            --text-color: #1e293b;
+            --primary: #3b82f6;
+            --secondary: #64748b;
+            --accent: #f59e0b;
+            --success: #10b981;
+            --danger: #ef4444;
+            --border: #cbd5e1;
+            --table-header: #334155;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px;
+            margin: 0;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+            max-width: 1000px;
+            width: 100%;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 20px;
+            margin-bottom: 25px;
+        }
+
+        h1 { margin: 0; font-size: 1.6rem; color: var(--primary); }
+
+        .btn-group button {
+            padding: 10px 16px;
+            margin-left: 10px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            color: white;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .btn-lang { background: var(--secondary); }
+        .btn-reset { background: var(--danger); }
+        .btn-next { background: var(--success); }
+        .btn-next:disabled { background: #94a3b8; cursor: not-allowed; }
+
+        .info-box {
+            background: #eff6ff;
+            border-left: 5px solid var(--primary);
+            padding: 15px 20px;
+            font-size: 1.1rem;
+            margin-bottom: 30px;
+            min-height: 80px;
+            line-height: 1.5;
+        }
+
+        /* Stage Layout */
+        .stage {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+            height: 450px;
+            padding: 0 20px;
+        }
+
+        /* CPU & Logical Memory */
+        .column {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 2;
+        }
+        .col-title { font-weight: bold; margin-bottom: 15px; color: var(--table-header); }
+
+        .cpu-box {
+            background: var(--accent);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 1.2rem;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .addr-breakdown {
+            display: flex;
+            border: 2px solid var(--border);
+            border-radius: 6px;
+            overflow: hidden;
+            background: white;
+        }
+        .addr-part {
+            padding: 8px 12px;
+            text-align: center;
+        }
+        .part-p { background: #dbeafe; color: #1e3a8a; font-weight: bold; border-right: 2px solid var(--border); }
+        .part-d { background: #fef3c7; color: #92400e; font-weight: bold; }
+
+        /* Page Table */
+        .page-table {
+            border-collapse: collapse;
+            background: white;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            border: 2px solid var(--border);
+        }
+        .page-table th { background: var(--table-header); color: white; padding: 10px 20px; }
+        .page-table td { padding: 10px 20px; text-align: center; border-bottom: 1px solid var(--border); transition: background 0.3s; }
+        .pt-row { font-family: monospace; font-size: 1.1rem; }
+
+        /* Physical Memory */
+        .memory-map {
+            width: 200px;
+            border: 3px solid var(--table-header);
+            background: white;
+            display: flex;
+            flex-direction: column;
+        }
+        .frame {
+            height: 50px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            color: var(--secondary);
+            font-size: 0.9rem;
+            transition: all 0.5s;
+        }
+        .frame::before {
+            content: attr(data-frame);
+            position: absolute;
+            left: -65px;
+            font-weight: bold;
+            color: var(--table-header);
+        }
+
+        /* Animated Pointer / Data Packet */
+        .packet {
+            position: absolute;
+            background: var(--primary);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            opacity: 0;
+            z-index: 10;
+            /* Central animation logic */
+            transition: all 1s cubic-bezier(0.34, 1.56, 0.64, 1);
+            top: 150px;
+            left: 80px;
+        }
+
+        /* CSS Animation Steps */
+        /* Step 1: Extract & Move to Page Table */
+        .step-1 .packet {
+            opacity: 1;
+            left: 310px; /* Moves to Page Table */
+            top: 245px;  /* Aligns with Row Page 2 */
+        }
+        .step-1 #row-p2 { background: #bfdbfe; font-weight: bold; } /* Highlight Row */
+
+        /* Step 2: Resolve Frame & Move to Memory */
+        .step-2 .packet {
+            opacity: 1;
+            background: var(--success);
+            left: 640px; /* Moves to Physical Memory */
+            top: 300px;  /* Aligns with Frame 5 */
+        }
+        .step-2 #row-p2 { background: #bfdbfe; font-weight: bold; }
+        .step-2 #frame-5 { background: #d1fae5; color: #065f46; font-weight: bold; border-left: 4px solid var(--success); }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1 id="ui-title">記憶體管理：分頁 (Paging)</h1>
+        <div class="btn-group">
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+            <button class="btn-reset" onclick="resetSim()">重置</button>
+            <button class="btn-next" id="btn-next" onclick="nextStep()">下一步</button>
+        </div>
+    </div>
+
+    <div class="info-box" id="ui-desc"></div>
+
+    <div class="stage" id="stage">
+        
+        <!-- Animated Packet -->
+        <div class="packet" id="anim-packet">p=2, d=4</div>
+
+        <!-- Left: CPU & Logical -->
+        <div class="column">
+            <div class="cpu-box">CPU</div>
+            <div class="col-title" id="ui-logical">邏輯位址 (8196)</div>
+            <div class="addr-breakdown">
+                <div class="addr-part part-p">
+                    <div style="font-size: 0.8rem;" id="ui-lbl-p">分頁號 (p)</div>
+                    <div>2</div>
+                </div>
+                <div class="addr-part part-d">
+                    <div style="font-size: 0.8rem;" id="ui-lbl-d">偏移量 (d)</div>
+                    <div>4</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Middle: Page Table -->
+        <div class="column">
+            <div class="col-title" id="ui-pt-title">分頁表 (Page Table)</div>
+            <table class="page-table">
+                <tr><th id="ui-th-p">分頁 (Page)</th><th id="ui-th-f">框架 (Frame)</th></tr>
+                <tr class="pt-row"><td>0</td><td>1</td></tr>
+                <tr class="pt-row"><td>1</td><td>4</td></tr>
+                <tr class="pt-row" id="row-p2"><td>2</td><td>5</td></tr>
+                <tr class="pt-row"><td>3</td><td>7</td></tr>
+            </table>
+        </div>
+
+        <!-- Right: Physical Memory -->
+        <div class="column">
+            <div class="col-title" id="ui-phys">實體記憶體</div>
+            <div class="memory-map">
+                <div class="frame" data-frame="Frame 0">OS</div>
+                <div class="frame" data-frame="Frame 1">Page 0</div>
+                <div class="frame" data-frame="...">...</div>
+                <div class="frame" data-frame="Frame 4">Page 1</div>
+                <div class="frame" id="frame-5" data-frame="Frame 5" style="height: 60px;">Target</div>
+                <div class="frame" data-frame="...">...</div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    const i18n = {
+        'zh': {
+            'title': '記憶體管理：分頁 (Paging)',
+            'btn-next': '下一步',
+            'btn-reset': '重置',
+            'ui-logical': '邏輯位址 (8196)',
+            'ui-lbl-p': '分頁號 (p)',
+            'ui-lbl-d': '偏移量 (d)',
+            'ui-pt-title': '分頁表 (Page Table)',
+            'ui-th-p': '分頁 (Page)',
+            'ui-th-f': '框架 (Frame)',
+            'ui-phys': '實體記憶體',
+            'pkt-0': 'p=2, d=4',
+            'pkt-1': '查表: 頁 2',
+            'pkt-2': 'f=5, d=4 (實體:20484)',
+            'desc-0': '<b>初始狀態：</b> CPU 產生邏輯位址 <code>8196</code>。假設分頁大小為 4KB (4096)，硬體自動將位址拆分為：<b>分頁號碼 p=2</b> (8196/4096) 與 <b>偏移量 d=4</b> (8196%4096)。',
+            'desc-1': '<b>步驟 1 (查閱分頁表)：</b> 記憶體管理單元 (MMU) 取出分頁號碼 <code>p=2</code>，前往「分頁表」尋找對應的框架。查表得知，分頁 2 存放在<b>框架 5</b> 中。',
+            'desc-2': '<b>步驟 2 (計算實體位址)：</b> 將找到的框架號碼 <code>f=5</code> 與原本的偏移量 <code>d=4</code> 組合。實體位址 = (5 × 4096) + 4 = <b>20484</b>。系統成功定址到實體記憶體的正確位置！'
+        },
+        'en': {
+            'title': 'Memory Management: Paging',
+            'btn-next': 'Next Step',
+            'btn-reset': 'Reset',
+            'ui-logical': 'Logical Address (8196)',
+            'ui-lbl-p': 'Page No. (p)',
+            'ui-lbl-d': 'Offset (d)',
+            'ui-pt-title': 'Page Table',
+            'ui-th-p': 'Page',
+            'ui-th-f': 'Frame',
+            'ui-phys': 'Physical Memory',
+            'pkt-0': 'p=2, d=4',
+            'pkt-1': 'Lookup: Page 2',
+            'pkt-2': 'f=5, d=4 (Phys:20484)',
+            'desc-0': '<b>Initial State:</b> CPU generates logical address <code>8196</code>. Assuming 4KB page size, hardware splits it into <b>Page Number p=2</b> (8196/4096) and <b>Offset d=4</b>.',
+            'desc-1': '<b>Step 1 (Page Table Lookup):</b> The MMU takes page number <code>p=2</code> and searches the Page Table. It finds that Page 2 is mapped to <b>Frame 5</b>.',
+            'desc-2': '<b>Step 2 (Physical Address Calculation):</b> The frame number <code>f=5</code> is combined with the original offset <code>d=4</code>. Physical Address = (5 × 4096) + 4 = <b>20484</b>. Memory accessed successfully!'
+        }
+    };
+
+    let step = 0;
+    let lang = 'zh';
+
+    function toggleLang() {
+        lang = lang === 'zh' ? 'en' : 'zh';
+        updateUI();
+    }
+
+    function updateUI() {
+        const t = i18n[lang];
+        document.getElementById('ui-title').innerText = t['title'];
+        document.getElementById('btn-next').innerText = t['btn-next'];
+        document.getElementById('btn-reset').innerText = t['btn-reset'];
+        document.getElementById('ui-logical').innerText = t['ui-logical'];
+        document.getElementById('ui-lbl-p').innerText = t['ui-lbl-p'];
+        document.getElementById('ui-lbl-d').innerText = t['ui-lbl-d'];
+        document.getElementById('ui-pt-title').innerText = t['ui-pt-title'];
+        document.getElementById('ui-th-p').innerText = t['ui-th-p'];
+        document.getElementById('ui-th-f').innerText = t['ui-th-f'];
+        document.getElementById('ui-phys').innerText = t['ui-phys'];
+        
+        // Update Description
+        document.getElementById('ui-desc').innerHTML = t[`desc-${step}`];
+
+        // Update Packet Text dynamically based on step
+        document.getElementById('anim-packet').innerText = t[`pkt-${step}`];
+    }
+
+    function nextStep() {
+        if (step < 2) {
+            step++;
+            document.getElementById('stage').className = 'stage step-' + step;
+            if (step === 2) document.getElementById('btn-next').disabled = true;
+            updateUI();
+        }
+    }
+
+    function resetSim() {
+        step = 0;
+        document.getElementById('stage').className = 'stage';
+        document.getElementById('btn-next').disabled = false;
+        updateUI();
+    }
+
+    // Initialize UI on load
+    updateUI();
+</script>
+
+</body>
+</html>

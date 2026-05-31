@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OS Memory Management: Paging Address Translation</title>
+    <style>
+        :root {
+            --bg: #f8fafc;
+            --text: #1e293b;
+            --cpu-bg: #f59e0b;
+            --pt-bg: #3b82f6;
+            --mem-bg: #10b981;
+            --border: #cbd5e1;
+            --highlight: #ef4444;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px;
+            margin: 0;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+            max-width: 1000px;
+            width: 100%;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+        }
+
+        h1 { margin: 0; font-size: 1.5rem; color: #0f172a; }
+
+        .btn-group button {
+            padding: 8px 16px;
+            margin-left: 10px;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .btn-lang { background: #64748b; }
+        .btn-reset { background: #ef4444; }
+        .btn-next { background: #10b981; }
+        .btn-next:disabled { background: #94a3b8; cursor: not-allowed; }
+
+        .info-box {
+            background: #eff6ff;
+            border-left: 5px solid var(--pt-bg);
+            padding: 15px 20px;
+            font-size: 1.1rem;
+            margin-bottom: 30px;
+            min-height: 80px;
+            line-height: 1.5;
+        }
+
+        /* Simulation Area */
+        .stage {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            position: relative;
+            height: 480px;
+            padding: 0 20px;
+        }
+
+        .col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 2;
+        }
+        .col-title { font-weight: bold; margin-bottom: 15px; font-size: 1.1rem; }
+
+        /* Logical Address Box */
+        .la-box {
+            border: 2px solid var(--cpu-bg);
+            border-radius: 8px;
+            background: white;
+            padding: 10px;
+            text-align: center;
+            margin-top: 20px;
+        }
+        .la-full { font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; color: var(--cpu-bg); }
+        .la-split { display: flex; gap: 10px; }
+        .la-part {
+            padding: 8px 15px;
+            border-radius: 4px;
+            font-weight: bold;
+            color: white;
+        }
+        .part-p { background: #fbbf24; position: relative; } /* Page Num */
+        .part-d { background: #fcd34d; position: relative; color: #78350f; } /* Offset */
+
+        /* Page Table */
+        .ptable {
+            border-collapse: collapse;
+            background: white;
+            border: 2px solid var(--pt-bg);
+            margin-top: 40px;
+        }
+        .ptable th { background: var(--pt-bg); color: white; padding: 10px 20px; }
+        .ptable td { padding: 10px 20px; text-align: center; border-bottom: 1px solid var(--border); font-family: monospace; font-size: 1.1rem; }
+        .target-row { transition: all 0.5s; }
+
+        /* Physical Memory */
+        .mem-map {
+            width: 220px;
+            border: 3px solid var(--mem-bg);
+            background: white;
+            display: flex;
+            flex-direction: column;
+            margin-top: 20px;
+        }
+        .frame {
+            height: 50px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            color: #64748b;
+        }
+        .frame::before {
+            content: attr(data-label);
+            position: absolute;
+            left: -70px;
+            font-weight: bold;
+            color: var(--mem-bg);
+        }
+        #target-frame { height: 70px; transition: all 0.5s; }
+
+        /* Animated Elements */
+        .anim-p {
+            position: absolute;
+            background: #fbbf24;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            opacity: 0;
+            z-index: 10;
+            transition: all 1s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        .anim-d {
+            position: absolute;
+            background: #fcd34d;
+            color: #78350f;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            opacity: 0;
+            z-index: 10;
+            transition: all 1s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        .pa-box {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            border: 3px solid var(--mem-bg);
+            padding: 15px 25px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 1.2rem;
+            opacity: 0;
+            transition: opacity 0.5s;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        /* --- Steps Animation CSS --- */
+        /* Start positions */
+        .anim-p { top: 125px; left: 60px; }
+        .anim-d { top: 125px; left: 135px; }
+
+        /* Step 1: Extract p, goto Page Table */
+        .step-1 .anim-p { opacity: 1; top: 185px; left: 340px; transform: scale(1.1); box-shadow: 0 0 10px rgba(0,0,0,0.2); }
+        .step-1 .target-row { background: #dbeafe; font-weight: bold; color: var(--pt-bg); }
+
+        /* Step 2: Combine f and d */
+        .step-2 .anim-p { opacity: 1; top: 380px; left: 380px; background: var(--mem-bg); content: "f = 7"; } /* visually changes to f */
+        .step-2 .anim-d { opacity: 1; top: 380px; left: 480px; }
+        .step-2 .target-row { background: #dbeafe; font-weight: bold; }
+        .step-2 .pa-box { opacity: 1; }
+
+        /* Step 3: Access Memory */
+        .step-3 .anim-p { opacity: 0; }
+        .step-3 .anim-d { opacity: 0; }
+        .step-3 .pa-box { bottom: 150px; left: 740px; transform: scale(0.8); background: var(--mem-bg); color: white; }
+        .step-3 #target-frame { background: #d1fae5; font-weight: bold; color: var(--mem-bg); border-left: 5px solid var(--mem-bg); }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1 id="ui-title">記憶體管理：分頁位址轉換 (Paging Translation)</h1>
+        <div class="btn-group">
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+            <button class="btn-reset" onclick="resetSim()">重置</button>
+            <button class="btn-next" id="btn-next" onclick="nextStep()">下一步</button>
+        </div>
+    </div>
+
+    <div class="info-box" id="ui-desc"></div>
+
+    <div class="stage" id="stage">
+        
+        <!-- Animated elements -->
+        <div class="anim-p" id="anim-p">p = 2</div>
+        <div class="anim-d" id="anim-d">d = 452</div>
+        <div class="pa-box" id="ui-calc">實體位址 = (7 × 1024) + 452<br>= 7620</div>
+
+        <!-- Left: CPU / Logical Address -->
+        <div class="col">
+            <div class="col-title" id="ui-cpu-title">CPU / 邏輯位址</div>
+            <div style="color: #64748b; font-size: 0.9rem;" id="ui-page-size">(分頁大小: 1024 Bytes)</div>
+            <div class="la-box">
+                <div class="la-full">LA: 2500</div>
+                <div class="la-split">
+                    <div class="la-part part-p">p = 2</div>
+                    <div class="la-part part-d">d = 452</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Middle: Page Table -->
+        <div class="col">
+            <div class="col-title" id="ui-pt-title">分頁表 (Page Table)</div>
+            <table class="ptable">
+                <tr><th id="ui-th-p">分頁號 (p)</th><th id="ui-th-f">框架號 (f)</th></tr>
+                <tr><td>0</td><td>12</td></tr>
+                <tr><td>1</td><td>4</td></tr>
+                <tr class="target-row" id="row-target"><td>2</td><td style="color: var(--highlight); font-weight:bold;">7</td></tr>
+                <tr><td>3</td><td>9</td></tr>
+            </table>
+        </div>
+
+        <!-- Right: Physical Memory -->
+        <div class="col">
+            <div class="col-title" id="ui-mem-title">實體記憶體</div>
+            <div class="mem-map">
+                <div class="frame" data-label="Frame 0">OS</div>
+                <div class="frame" data-label="...">...</div>
+                <div class="frame" data-label="Frame 4">Page 1</div>
+                <div class="frame" data-label="...">...</div>
+                <div class="frame" id="target-frame" data-label="Frame 7"><span id="ui-target-txt">目標分頁 2 資料</span></div>
+                <div class="frame" data-label="...">...</div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    const i18n = {
+        'zh': {
+            'title': '記憶體管理：分頁位址轉換 (Paging Translation)',
+            'btn-next': '下一步',
+            'btn-reset': '重置',
+            'cpu-title': 'CPU / 邏輯位址',
+            'page-size': '(分頁大小: 1024 Bytes)',
+            'pt-title': '分頁表 (Page Table)',
+            'th-p': '分頁號 (p)',
+            'th-f': '框架號 (f)',
+            'mem-title': '實體記憶體',
+            'target-txt': '目標資料 (Page 2)',
+            'calc-txt': '實體位址 = (7 × 1024) + 452<br>= <span style="color:#ef4444;">7620</span>',
+            'anim-p-2': 'f = 7',
+            'desc-0': '<b>初始狀態：</b> CPU 產生虛擬位址 <code>2500</code>。硬體透過除法將其拆為：<b>分頁號 p=2</b> (2500/1024) 與 <b>偏移量 d=452</b> (2500%1024)。',
+            'desc-1': '<b>步驟 1 (查表)：</b> 記憶體管理單元 (MMU) 提取出分頁號 <code>p=2</code>，去查閱分頁表。在表中找到 Page 2 對應到的實體記憶體框架為 <code>f=7</code>。',
+            'desc-2': '<b>步驟 2 (合成計算)：</b> 取得框架號碼 <code>f=7</code> 後，將其與原本不變的偏移量 <code>d=452</code> 結合。計算公式為：(f × 分頁大小) + d。',
+            'desc-3': '<b>步驟 3 (存取記憶體)：</b> 最終計算出實體位址為 <code>7620</code>。硬體直接透過此位址，精準存取實體記憶體中 Frame 7 的資料。'
+        },
+        'en': {
+            'title': 'OS Memory Management: Paging Address Translation',
+            'btn-next': 'Next Step',
+            'btn-reset': 'Reset',
+            'cpu-title': 'CPU / Logical Address',
+            'page-size': '(Page Size: 1024 Bytes)',
+            'pt-title': 'Page Table',
+            'th-p': 'Page (p)',
+            'th-f': 'Frame (f)',
+            'mem-title': 'Physical Memory',
+            'target-txt': 'Target Data (Page 2)',
+            'calc-txt': 'Physical Addr = (7 × 1024) + 452<br>= <span style="color:#ef4444;">7620</span>',
+            'anim-p-2': 'f = 7',
+            'desc-0': '<b>Initial State:</b> CPU generates logical address <code>2500</code>. Hardware splits it: <b>Page p=2</b> (2500/1024) and <b>Offset d=452</b> (2500%1024).',
+            'desc-1': '<b>Step 1 (Table Lookup):</b> The MMU extracts Page No. <code>p=2</code> and searches the Page Table. It discovers that Page 2 is mapped to Frame <code>f=7</code>.',
+            'desc-2': '<b>Step 2 (Combine & Calculate):</b> The retrieved frame <code>f=7</code> is combined with the original offset <code>d=452</code>. The formula is: (f × Page Size) + d.',
+            'desc-3': '<b>Step 3 (Memory Access):</b> The final Physical Address is <code>7620</code>. The hardware uses this exact address to access the data in Frame 7.'
+        }
+    };
+
+    let step = 0;
+    let lang = 'zh';
+
+    function toggleLang() {
+        lang = lang === 'zh' ? 'en' : 'zh';
+        updateUI();
+    }
+
+    function updateUI() {
+        const t = i18n[lang];
+        document.getElementById('ui-title').innerText = t['title'];
+        document.getElementById('btn-next').innerText = t['btn-next'];
+        document.getElementById('btn-reset').innerText = t['btn-reset'];
+        
+        document.getElementById('ui-cpu-title').innerText = t['cpu-title'];
+        document.getElementById('ui-page-size').innerText = t['page-size'];
+        document.getElementById('ui-pt-title').innerText = t['pt-title'];
+        document.getElementById('ui-th-p').innerText = t['th-p'];
+        document.getElementById('ui-th-f').innerText = t['th-f'];
+        document.getElementById('ui-mem-title').innerText = t['mem-title'];
+        document.getElementById('ui-target-txt').innerText = t['target-txt'];
+        document.getElementById('ui-calc').innerHTML = t['calc-txt'];
+        
+        document.getElementById('ui-desc').innerHTML = t[`desc-${step}`];
+
+        // Dynamic element updates based on step
+        if (step >= 2) {
+            document.getElementById('anim-p').innerText = t['anim-p-2'];
+        } else {
+            document.getElementById('anim-p').innerText = 'p = 2';
+        }
+    }
+
+    function nextStep() {
+        if (step < 3) {
+            step++;
+            document.getElementById('stage').className = 'stage step-' + step;
+            if (step === 3) document.getElementById('btn-next').disabled = true;
+            updateUI();
+        }
+    }
+
+    function resetSim() {
+        step = 0;
+        document.getElementById('stage').className = 'stage';
+        document.getElementById('btn-next').disabled = false;
+        updateUI();
+    }
+
+    // Init
+    updateUI();
+</script>
+
+</body>
+</html>

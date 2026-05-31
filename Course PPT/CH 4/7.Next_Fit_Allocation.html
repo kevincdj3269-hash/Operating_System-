@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OS Memory Management: Next-Fit</title>
+    <style>
+        :root {
+            --bg: #f0fdf4;
+            --text: #1f2937;
+            --primary: #10b981;
+            --border: #d1d5db;
+            --free-bg: #e5e7eb;
+            --used-a: #3b82f6;
+            --used-b: #8b5cf6;
+            --used-c: #ec4899;
+            --pointer-color: #ef4444;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px;
+            margin: 0;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            max-width: 950px;
+            width: 100%;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+        }
+
+        h1 { margin: 0; font-size: 1.5rem; color: #047857; }
+
+        .btn-group button {
+            padding: 8px 16px;
+            margin-left: 10px;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .btn-lang { background: #6b7280; }
+        .btn-reset { background: #f43f5e; }
+        .btn-next { background: var(--primary); }
+        .btn-next:disabled { background: #9ca3af; cursor: not-allowed; }
+
+        .info-box {
+            background: #dcfce7;
+            border-left: 5px solid #22c55e;
+            padding: 15px;
+            font-size: 1.1rem;
+            margin-bottom: 30px;
+            min-height: 70px;
+            line-height: 1.5;
+        }
+
+        /* Stage Layout */
+        .stage {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            gap: 40px;
+            position: relative;
+            height: 500px;
+            padding: 20px;
+            background: #f9fafb;
+            border-radius: 8px;
+        }
+
+        /* Queue */
+        .queue {
+            width: 150px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            position: relative;
+            z-index: 10;
+        }
+        .q-title { font-weight: bold; text-align: center; color: #4b5563; margin-bottom: 10px; }
+        
+        .process {
+            color: white;
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+            font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            position: absolute;
+            width: 130px;
+            transition: all 1s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+        #proc-A { background: var(--used-a); height: 40px; top: 40px; }
+        #proc-B { background: var(--used-b); height: 60px; top: 110px; }
+        #proc-C { background: var(--used-c); height: 50px; top: 200px; }
+
+        /* Memory */
+        .memory-map {
+            width: 200px;
+            border: 3px solid #374151;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+        
+        .mem-title {
+            background: #374151;
+            color: white;
+            text-align: center;
+            padding: 8px;
+            font-weight: bold;
+            margin: 0;
+        }
+
+        .hole {
+            width: 100%;
+            background: var(--free-bg);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+            position: relative;
+            transition: all 0.5s;
+        }
+        
+        .hole-label {
+            position: absolute;
+            bottom: 5px;
+            font-size: 0.9rem;
+            color: #6b7280;
+            font-weight: bold;
+        }
+
+        #H1 { height: 60px; }  /* 10MB */
+        #H2 { height: 120px; } /* 20MB */
+        #H3 { height: 30px; }  /* 5MB */
+        #H4 { height: 180px; border-bottom: none; } /* 30MB */
+
+        /* Pointer */
+        .pointer {
+            position: absolute;
+            left: 170px;
+            top: 60px;
+            display: flex;
+            align-items: center;
+            font-weight: bold;
+            color: var(--pointer-color);
+            transition: top 0.8s ease-in-out;
+            z-index: 20;
+        }
+        .pointer::after {
+            content: "►";
+            font-size: 2rem;
+            margin-left: 5px;
+        }
+
+        /* --- Animations (Steps) --- */
+        
+        /* Step 1: Proc A -> H1 */
+        .step-1 #proc-A { left: 240px; top: 40px; } /* Moves into H1 */
+        .step-1 #H1 { background: linear-gradient(to bottom, var(--used-a) 80%, var(--free-bg) 80%); }
+        .step-1 .pointer { top: 90px; } /* Points to remaining 2MB */
+
+        /* Step 2: Proc B -> H2 */
+        .step-2 #proc-A { left: 240px; top: 40px; }
+        .step-2 #H1 { background: linear-gradient(to bottom, var(--used-a) 80%, var(--free-bg) 80%); }
+        .step-2 #proc-B { left: 240px; top: 100px; } /* Moves into H2 */
+        .step-2 #H2 { background: linear-gradient(to bottom, var(--used-b) 60%, var(--free-bg) 60%); }
+        .step-2 .pointer { top: 190px; } /* Points to remaining 8MB in H2 */
+
+        /* Step 3: Proc C -> H4 */
+        .step-3 #proc-A { left: 240px; top: 40px; }
+        .step-3 #H1 { background: linear-gradient(to bottom, var(--used-a) 80%, var(--free-bg) 80%); }
+        .step-3 #proc-B { left: 240px; top: 100px; }
+        .step-3 #H2 { background: linear-gradient(to bottom, var(--used-b) 60%, var(--free-bg) 60%); }
+        .step-3 #proc-C { left: 240px; top: 250px; } /* Moves into H4 */
+        .step-3 #H4 { background: linear-gradient(to bottom, var(--used-c) 33%, var(--free-bg) 33%); }
+        .step-3 .pointer { top: 350px; } /* Points to remaining 20MB in H4 */
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1 id="ui-title">記憶體管理：次適法 (Next-Fit)</h1>
+        <div class="btn-group">
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+            <button class="btn-reset" onclick="resetSim()">重置</button>
+            <button class="btn-next" id="btn-next" onclick="nextStep()">下一步</button>
+        </div>
+    </div>
+
+    <div class="info-box" id="ui-desc">
+        點擊「下一步」開始。初始狀態：記憶體有 4 個空閒區塊，搜尋指標停留在開頭 (H1)。
+    </div>
+
+    <div class="stage" id="stage">
+        <div class="queue">
+            <div class="q-title" id="ui-queue">等待佇列</div>
+            <div class="process" id="proc-A">行程 A (8MB)</div>
+            <div class="process" id="proc-B">行程 B (12MB)</div>
+            <div class="process" id="proc-C">行程 C (10MB)</div>
+        </div>
+
+        <div class="pointer" id="pointer"><span id="ui-ptr">指標</span></div>
+
+        <div class="memory-map">
+            <div class="mem-title" id="ui-mem">實體記憶體</div>
+            <div class="hole" id="H1"><span class="hole-label" id="lbl-h1">H1 (10MB)</span></div>
+            <div class="hole" id="H2"><span class="hole-label" id="lbl-h2">H2 (20MB)</span></div>
+            <div class="hole" id="H3"><span class="hole-label" id="lbl-h3">H3 (5MB)</span></div>
+            <div class="hole" id="H4"><span class="hole-label" id="lbl-h4">H4 (30MB)</span></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const i18n = {
+        'zh': {
+            'title': '作業系統記憶體管理：次適法 (Next-Fit)',
+            'btn-next': '下一步',
+            'btn-reset': '重置',
+            'ui-queue': '等待佇列',
+            'ui-mem': '實體記憶體',
+            'ui-ptr': '指標',
+            'desc-0': '<b>初始狀態：</b> 記憶體有 4 個空閒區塊，搜尋指標停留在開頭 (H1)。',
+            'desc-1': '<b>步驟 1 (載入 A)：</b> 指標檢查 H1(10MB)，空間足夠。行程 A 被放入 H1。<b>指標停留在 H1 剩餘的 2MB 處。</b>',
+            'desc-2': '<b>步驟 2 (載入 B)：</b> 系統不從頭找！指標從 2MB 繼續往下，發現 H2(20MB) 足夠。放入行程 B。<b>指標停留在 H2 剩餘的 8MB 處。</b>',
+            'desc-3': '<b>步驟 3 (載入 C)：</b> 指標從 8MB 繼續往下 -> 檢查 H3(5MB) 不夠 -> 檢查 H4(30MB) 足夠。放入行程 C。這就是 Next-Fit 跳過前端碎片的特性。',
+            'h1-after': '剩 2MB',
+            'h2-after': '剩 8MB',
+            'h4-after': '剩 20MB'
+        },
+        'en': {
+            'title': 'OS Memory Management: Next-Fit Algorithm',
+            'btn-next': 'Next Step',
+            'btn-reset': 'Reset',
+            'ui-queue': 'Job Queue',
+            'ui-mem': 'Physical Memory',
+            'ui-ptr': 'Pointer',
+            'desc-0': '<b>Initial State:</b> Memory has 4 holes. The search pointer starts at the beginning (H1).',
+            'desc-1': '<b>Step 1 (Load A):</b> Pointer checks H1(10MB), it fits. Process A is placed in H1. <b>Pointer stays at the remaining 2MB of H1.</b>',
+            'desc-2': '<b>Step 2 (Load B):</b> Does NOT start from the top! Pointer checks 2MB (fails), moves to H2(20MB) which fits. Load B. <b>Pointer stays at the remaining 8MB.</b>',
+            'desc-3': '<b>Step 3 (Load C):</b> Pointer continues from 8MB -> checks H3(5MB, fails) -> checks H4(30MB, fits). Load C. This shows how Next-Fit skips fragmented front spaces.',
+            'h1-after': '2MB Free',
+            'h2-after': '8MB Free',
+            'h4-after': '20MB Free'
+        }
+    };
+
+    let step = 0;
+    let lang = 'zh';
+
+    function toggleLang() {
+        lang = lang === 'zh' ? 'en' : 'zh';
+        updateUI();
+    }
+
+    function updateUI() {
+        const t = i18n[lang];
+        document.getElementById('ui-title').innerText = t['title'];
+        document.getElementById('btn-next').innerText = t['btn-next'];
+        document.getElementById('btn-reset').innerText = t['btn-reset'];
+        document.getElementById('ui-queue').innerText = t['ui-queue'];
+        document.getElementById('ui-mem').innerText = t['ui-mem'];
+        document.getElementById('ui-ptr').innerText = t['ui-ptr'];
+        
+        document.getElementById('proc-A').innerText = lang === 'zh' ? '行程 A (8MB)' : 'Process A (8MB)';
+        document.getElementById('proc-B').innerText = lang === 'zh' ? '行程 B (12MB)' : 'Process B (12MB)';
+        document.getElementById('proc-C').innerText = lang === 'zh' ? '行程 C (10MB)' : 'Process C (10MB)';
+
+        document.getElementById('ui-desc').innerHTML = t[`desc-${step}`];
+
+        // Update labels based on steps
+        document.getElementById('lbl-h1').innerText = step >= 1 ? t['h1-after'] : 'H1 (10MB)';
+        document.getElementById('lbl-h2').innerText = step >= 2 ? t['h2-after'] : 'H2 (20MB)';
+        document.getElementById('lbl-h3').innerText = 'H3 (5MB)';
+        document.getElementById('lbl-h4').innerText = step >= 3 ? t['h4-after'] : 'H4 (30MB)';
+    }
+
+    function nextStep() {
+        if (step < 3) {
+            step++;
+            document.getElementById('stage').className = 'stage step-' + step;
+            if (step === 3) document.getElementById('btn-next').disabled = true;
+            updateUI();
+        }
+    }
+
+    function resetSim() {
+        step = 0;
+        document.getElementById('stage').className = 'stage';
+        document.getElementById('btn-next').disabled = false;
+        updateUI();
+    }
+
+    updateUI();
+</script>
+
+</body>
+</html>

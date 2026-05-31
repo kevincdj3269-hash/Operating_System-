@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OS Memory Management: Best-Fit</title>
+    <style>
+        :root {
+            --bg-color: #f8fafc;
+            --text-color: #334155;
+            --primary: #8b5cf6;
+            --secondary: #3b82f6;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --hole-bg: #e2e8f0;
+            --border: #cbd5e1;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px;
+            margin: 0;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
+            max-width: 900px;
+            width: 100%;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 20px;
+            margin-bottom: 25px;
+        }
+
+        h1 { margin: 0; font-size: 1.6rem; color: var(--primary); }
+
+        .btn-group button {
+            padding: 10px 18px;
+            margin-left: 10px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-lang { background: #64748b; }
+        .btn-reset { background: var(--danger); }
+        .btn-next { background: var(--success); }
+        .btn-next:disabled { background: #94a3b8; cursor: not-allowed; }
+
+        .info-box {
+            background: #eff6ff;
+            border-left: 5px solid var(--secondary);
+            padding: 15px 20px;
+            font-size: 1.1rem;
+            margin-bottom: 30px;
+            line-height: 1.6;
+            min-height: 80px;
+        }
+
+        /* Stage Layout */
+        .stage {
+            display: flex;
+            justify-content: center;
+            gap: 60px;
+            height: 500px;
+            position: relative;
+        }
+
+        /* Queue Area */
+        .queue {
+            width: 160px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            z-index: 10;
+        }
+        .q-title { font-weight: bold; margin-bottom: 20px; color: #475569; }
+        
+        .process {
+            width: 140px;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            position: absolute;
+            transition: all 1s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        #proc-a { height: 60px; background: var(--primary); top: 60px; }
+
+        /* Memory Area */
+        .memory-map {
+            width: 260px;
+            border: 4px solid #1e293b;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            border-radius: 4px;
+        }
+        
+        .mem-title {
+            background: #1e293b;
+            color: white;
+            text-align: center;
+            padding: 10px;
+            font-weight: bold;
+            margin: 0;
+        }
+
+        .hole {
+            width: 100%;
+            background: var(--hole-bg);
+            border-bottom: 2px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 15px;
+            box-sizing: border-box;
+            position: relative;
+            transition: all 0.5s;
+        }
+        .hole-label { font-weight: bold; color: #475569; }
+
+        /* Calculation Tooltips */
+        .calc-badge {
+            background: #fff;
+            border: 2px dashed var(--warning);
+            color: var(--warning);
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            opacity: 0;
+            transform: translateX(-20px);
+            transition: all 0.5s;
+        }
+        .calc-badge.best {
+            background: var(--success);
+            border-color: var(--success);
+            color: white;
+        }
+        .calc-badge.bad {
+            border-color: var(--danger);
+            color: var(--danger);
+        }
+
+        #H1 { height: 90px; }  /* 15MB */
+        #H2 { height: 60px; }  /* 10MB */
+        #H3 { height: 120px; } /* 20MB */
+        #H4 { height: 78px; border-bottom: none; } /* 13MB */
+
+        /* --- Animation Steps --- */
+        
+        /* Step 1: Scan all holes */
+        .step-1 .calc-badge { opacity: 1; transform: translateX(0); }
+        .step-1 #proc-a { transform: scale(1.05); box-shadow: 0 0 15px var(--primary); }
+
+        /* Step 2: Move to Best Fit (H4) */
+        .step-2 .calc-badge { opacity: 0; }
+        .step-2 #proc-a { 
+            left: 285px; /* Move to memory map */
+            top: 310px; /* Align with H4 */
+        }
+        .step-2 #H4 { 
+            background: linear-gradient(to bottom, var(--primary) 90%, #fca5a5 90%);
+        }
+        /* Update label in JS for Step 2 to show remaining fragment */
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1 id="ui-title">記憶體管理：最適法 (Best-Fit)</h1>
+        <div class="btn-group">
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+            <button class="btn-reset" onclick="resetSim()">重置</button>
+            <button class="btn-next" id="btn-next" onclick="nextStep()">下一步</button>
+        </div>
+    </div>
+
+    <div class="info-box" id="ui-desc">
+        點擊「下一步」開始。記憶體目前有四個大小不同的空閒區塊 (Holes)。
+    </div>
+
+    <div class="stage" id="stage">
+        <div class="queue">
+            <div class="q-title" id="ui-queue">等待佇列</div>
+            <div class="process" id="proc-a">行程 A (12MB)</div>
+        </div>
+
+        <div class="memory-map">
+            <div class="mem-title" id="ui-mem">實體記憶體</div>
+            <div class="hole" id="H1">
+                <span class="hole-label">H1 (15MB)</span>
+                <span class="calc-badge" id="c1">15 - 12 = 剩 3MB</span>
+            </div>
+            <div class="hole" id="H2">
+                <span class="hole-label">H2 (10MB)</span>
+                <span class="calc-badge bad" id="c2">空間不足</span>
+            </div>
+            <div class="hole" id="H3">
+                <span class="hole-label">H3 (20MB)</span>
+                <span class="calc-badge" id="c3">20 - 12 = 剩 8MB</span>
+            </div>
+            <div class="hole" id="H4">
+                <span class="hole-label" id="lbl-h4">H4 (13MB)</span>
+                <span class="calc-badge best" id="c4">13-12 = 剩 1MB (最佳)</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const i18n = {
+        'zh': {
+            'title': '作業系統記憶體管理：最適法 (Best-Fit)',
+            'btn-next': '下一步',
+            'btn-reset': '重置',
+            'ui-queue': '等待佇列',
+            'ui-mem': '實體記憶體',
+            'proc-a': '行程 A (12MB)',
+            'desc-0': '<b>初始狀態：</b> 準備將 12MB 的行程 A 載入記憶體。',
+            'desc-1': '<b>步驟 1 (全面掃描)：</b> 最適法會掃描<b>所有</b>的空閒區塊，計算如果放進去會剩下多少空間。系統發現 H4 剩下的空間 (1MB) 是所有選項中最小的。',
+            'desc-2': '<b>步驟 2 (配置與碎片)：</b> 系統將行程 A 放入 H4。H4 被佔用後，留下了一個僅 1MB 的空間。這保護了上方較大的 H1 和 H3，但也產生了極小的<b>外部碎裂</b>。',
+            'c1': '15 - 12 = 剩 3MB',
+            'c2': '空間不足',
+            'c3': '20 - 12 = 剩 8MB',
+            'c4': '13 - 12 = 剩 1MB (最佳)',
+            'lbl-h4': 'H4 (13MB)',
+            'lbl-h4-after': '<span style="color:white; font-size: 0.8rem;">A佔用(12) | 碎(1)</span>'
+        },
+        'en': {
+            'title': 'OS Memory Management: Best-Fit',
+            'btn-next': 'Next Step',
+            'btn-reset': 'Reset',
+            'ui-queue': 'Job Queue',
+            'ui-mem': 'Physical Memory',
+            'proc-a': 'Process A (12MB)',
+            'desc-0': '<b>Initial State:</b> Process A (12MB) is ready to be loaded.',
+            'desc-1': '<b>Step 1 (Scan All):</b> Best-Fit scans <b>ALL</b> holes to calculate the remaining space (waste). It finds that H4 leaves the smallest waste (1MB).',
+            'desc-2': '<b>Step 2 (Allocate):</b> Process A is placed in H4. This preserves the larger H1 and H3 holes, but leaves a tiny 1MB space, creating severe <b>External Fragmentation</b>.',
+            'c1': '15 - 12 = 3MB Left',
+            'c2': 'Too Small',
+            'c3': '20 - 12 = 8MB Left',
+            'c4': '13 - 12 = 1MB (BEST)',
+            'lbl-h4': 'H4 (13MB)',
+            'lbl-h4-after': '<span style="color:white; font-size: 0.8rem;">A(12) | Frag(1)</span>'
+        }
+    };
+
+    let step = 0;
+    let lang = 'zh';
+
+    function toggleLang() {
+        lang = lang === 'zh' ? 'en' : 'zh';
+        updateUI();
+    }
+
+    function updateUI() {
+        const t = i18n[lang];
+        document.getElementById('ui-title').innerText = t['title'];
+        document.getElementById('btn-next').innerText = t['btn-next'];
+        document.getElementById('btn-reset').innerText = t['btn-reset'];
+        document.getElementById('ui-queue').innerText = t['ui-queue'];
+        document.getElementById('ui-mem').innerText = t['ui-mem'];
+        document.getElementById('proc-a').innerText = t['proc-a'];
+        
+        document.getElementById('c1').innerText = t['c1'];
+        document.getElementById('c2').innerText = t['c2'];
+        document.getElementById('c3').innerText = t['c3'];
+        document.getElementById('c4').innerText = t['c4'];
+
+        document.getElementById('ui-desc').innerHTML = t[`desc-${step}`];
+
+        if (step >= 2) {
+            document.getElementById('lbl-h4').innerHTML = t['lbl-h4-after'];
+        } else {
+            document.getElementById('lbl-h4').innerText = t['lbl-h4'];
+        }
+    }
+
+    function nextStep() {
+        if (step < 2) {
+            step++;
+            document.getElementById('stage').className = 'stage step-' + step;
+            if (step === 2) document.getElementById('btn-next').disabled = true;
+            updateUI();
+        }
+    }
+
+    function resetSim() {
+        step = 0;
+        document.getElementById('stage').className = 'stage';
+        document.getElementById('btn-next').disabled = false;
+        updateUI();
+    }
+
+    updateUI();
+</script>
+
+</body>
+</html>

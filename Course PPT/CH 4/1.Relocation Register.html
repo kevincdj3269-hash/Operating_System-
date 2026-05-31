@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OS Memory Management: Relocation Register</title>
+    <style>
+        :root {
+            --bg-color: #f0f4f8;
+            --text-color: #2d3748;
+            --cpu-color: #e53e3e;
+            --mmu-color: #dd6b20;
+            --mem-color: #3182ce;
+            --os-color: #4a5568;
+            --packet-color: #38b2ac;
+            --border-radius: 8px;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px;
+            margin: 0;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+            background: white;
+            border-radius: var(--border-radius);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            padding: 30px;
+            box-sizing: border-box;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            margin: 0;
+        }
+
+        .controls button {
+            padding: 8px 16px;
+            margin-left: 10px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            color: white;
+            transition: opacity 0.2s, transform 0.1s;
+        }
+
+        .controls button:active { transform: scale(0.95); }
+        .btn-lang { background-color: #718096; }
+        .btn-reset { background-color: #e53e3e; }
+        .btn-next { background-color: #48bb78; }
+        .btn-next:disabled { background-color: #a0aec0; cursor: not-allowed; }
+
+        .desc-box {
+            background-color: #ebf8ff;
+            border-left: 5px solid #4299e1;
+            padding: 15px;
+            font-size: 1.1rem;
+            line-height: 1.5;
+            min-height: 60px;
+            margin-bottom: 40px;
+        }
+
+        /* Animation Area */
+        .simulation-area {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+            height: 350px;
+            padding: 0 20px;
+        }
+
+        .component {
+            border-radius: var(--border-radius);
+            padding: 15px;
+            text-align: center;
+            font-weight: bold;
+            color: white;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            position: relative;
+            z-index: 2;
+        }
+
+        /* CPU */
+        .cpu-box {
+            background-color: var(--cpu-color);
+            width: 120px;
+            height: 120px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.5rem;
+        }
+
+        /* MMU */
+        .mmu-box {
+            background-color: var(--mmu-color);
+            width: 200px;
+            height: 200px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: center;
+            padding-top: 20px;
+        }
+
+        .register {
+            background: rgba(255,255,255,0.2);
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 20px;
+            width: 90%;
+            border: 2px dashed #fff;
+        }
+
+        .math-symbol {
+            font-size: 2rem;
+            margin-top: 10px;
+            opacity: 0.3;
+            transition: opacity 0.5s;
+        }
+
+        /* Memory */
+        .memory-box {
+            background-color: #fff;
+            border: 3px solid var(--mem-color);
+            width: 180px;
+            height: 300px;
+            display: flex;
+            flex-direction: column;
+            color: var(--text-color);
+            position: relative;
+        }
+
+        .mem-title {
+            background-color: var(--mem-color);
+            color: white;
+            padding: 5px;
+            margin: 0;
+            margin-bottom: -1px;
+        }
+
+        .mem-slot {
+            flex-grow: 1;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 0.9rem;
+            color: #a0aec0;
+        }
+
+        .mem-os { background-color: var(--os-color); color: white; flex-grow: 1.5; }
+        .mem-target { background-color: #ebf8ff; position: relative; transition: background-color 0.5s;}
+
+        .mem-addr {
+            position: absolute;
+            left: -55px;
+            font-size: 0.8rem;
+            color: #718096;
+        }
+
+        /* Data Packets (Animations) */
+        .packet {
+            position: absolute;
+            background-color: var(--packet-color);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            opacity: 0;
+            z-index: 10;
+            transition: all 1s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        #logical-packet {
+            top: 160px;
+            left: 100px;
+        }
+
+        #physical-packet {
+            top: 220px;
+            left: 480px;
+        }
+
+        /* --- STEP CSS CLASSES --- */
+        
+        /* Step 1: Logic address appears and moves to MMU */
+        .step-1 #logical-packet {
+            opacity: 1;
+            left: 280px; /* Move to MMU */
+        }
+
+        /* Step 2: Addition happens in MMU */
+        .step-2 #logical-packet {
+            opacity: 1;
+            left: 410px;
+            top: 130px;
+            transform: scale(0.8);
+        }
+        .step-2 .math-symbol {
+            opacity: 1;
+        }
+        .step-2 .register {
+            background: rgba(255,255,255,0.5);
+            box-shadow: 0 0 10px #fff;
+        }
+
+        /* Step 3: Physical address generated and moves to Memory */
+        .step-3 #logical-packet {
+            opacity: 0;
+        }
+        .step-3 .math-symbol {
+            opacity: 0.3;
+        }
+        .step-3 .register {
+            background: rgba(255,255,255,0.2);
+            box-shadow: none;
+        }
+        .step-3 #physical-packet {
+            opacity: 1;
+            left: 640px; /* Move to Memory */
+            top: 220px;
+        }
+        .step-3 .mem-target {
+            background-color: #38b2ac;
+            color: white;
+            font-weight: bold;
+        }
+
+        /* Connective Lines (Decorative) */
+        .line {
+            position: absolute;
+            height: 4px;
+            background-color: #cbd5e0;
+            z-index: 1;
+            top: 175px;
+        }
+        .line-1 { left: 150px; width: 170px; }
+        .line-2 { left: 520px; width: 140px; top: 235px; }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1 id="ui-title">記憶體管理：重定址暫存器</h1>
+        <div class="controls">
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+            <button class="btn-reset" onclick="resetSim()" id="btn-reset">重置</button>
+            <button class="btn-next" onclick="nextStep()" id="btn-next">下一步</button>
+        </div>
+    </div>
+
+    <div class="desc-box" id="ui-desc">
+        點擊「下一步」開始。CPU 準備執行程式，程式被載入在實體位址 14000 的位置。
+    </div>
+
+    <div class="simulation-area" id="sim-area">
+        <!-- Lines -->
+        <div class="line line-1"></div>
+        <div class="line line-2"></div>
+
+        <!-- Packets -->
+        <div class="packet" id="logical-packet"><span id="ui-logic-tag">邏輯:</span> 346</div>
+        <div class="packet" id="physical-packet"><span id="ui-phys-tag">實體:</span> 14346</div>
+
+        <!-- CPU -->
+        <div class="component cpu-box">
+            CPU
+        </div>
+
+        <!-- MMU -->
+        <div class="component mmu-box">
+            MMU
+            <div class="register">
+                <div id="ui-reg">重定址暫存器</div>
+                <div>(Relocation Reg)</div>
+                <div style="font-size: 1.2rem; margin-top: 5px;">14000</div>
+            </div>
+            <div class="math-symbol">+</div>
+        </div>
+
+        <!-- Memory Map -->
+        <div class="component memory-box">
+            <h3 class="mem-title" id="ui-mem">實體記憶體</h3>
+            <div class="mem-slot mem-os">
+                <span class="mem-addr">0</span>
+                OS
+            </div>
+            <div class="mem-slot">
+                <span class="mem-addr">...</span>
+            </div>
+            <div class="mem-slot mem-target" style="flex-grow: 1.2;">
+                <span class="mem-addr">14000</span>
+                <span id="ui-target-mem">目標程式</span>
+            </div>
+            <div class="mem-slot">
+                <span class="mem-addr">...</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const i18n = {
+        'zh': {
+            'title': '作業系統記憶體管理：重定址暫存器',
+            'btn-next': '下一步',
+            'btn-reset': '重置',
+            'ui-reg': '重定址暫存器',
+            'ui-mem': '實體記憶體',
+            'ui-target-mem': '目標程式區塊',
+            'ui-logic-tag': '邏輯位址:',
+            'ui-phys-tag': '實體位址:',
+            'desc-0': '<b>初始狀態：</b> 作業系統將程式載入到實體記憶體的 <code>14000</code> 位置。硬體自動將 <b>重定址暫存器</b> 設定為 14000。程式內以為自己從 0 開始執行。',
+            'desc-1': '<b>步驟 1 (產生位址)：</b> CPU 執行程式指令，要求存取資料，產生了一個<b>邏輯位址 (Logical Address) `346`</b>。該位址被傳送到 MMU。',
+            'desc-2': '<b>步驟 2 (動態轉換)：</b> 在 MMU (記憶體管理單元) 內部，硬體自動將傳來的邏輯位址 <code>346</code> 與重定址暫存器的值 <code>14000</code> 相加。',
+            'desc-3': '<b>步驟 3 (實體存取)：</b> 經過計算 (346 + 14000)，得到最終的<b>實體位址 `14346`</b>。系統透過這個實體位址正確地在記憶體中找到程式的資料。'
+        },
+        'en': {
+            'title': 'OS Memory Management: Relocation Register',
+            'btn-next': 'Next Step',
+            'btn-reset': 'Reset',
+            'ui-reg': 'Relocation Register',
+            'ui-mem': 'Physical Memory',
+            'ui-target-mem': 'Target Program',
+            'ui-logic-tag': 'Logical:',
+            'ui-phys-tag': 'Physical:',
+            'desc-0': '<b>Initial State:</b> The OS loads the program into physical memory starting at <code>14000</code>. The hardware sets the <b>Relocation Register</b> to 14000. The program assumes it starts at address 0.',
+            'desc-1': '<b>Step 1 (Generate):</b> The CPU executes an instruction and generates a <b>Logical Address `346`</b>. This address is sent to the MMU.',
+            'desc-2': '<b>Step 2 (Translation):</b> Inside the MMU (Memory Management Unit), the hardware automatically adds the logical address <code>346</code> to the value in the relocation register <code>14000</code>.',
+            'desc-3': '<b>Step 3 (Access):</b> The addition (346 + 14000) results in the <b>Physical Address `14346`</b>. The system uses this exact physical address to access the data in main memory.'
+        }
+    };
+
+    let step = 0;
+    let lang = 'zh';
+
+    function toggleLang() {
+        lang = lang === 'zh' ? 'en' : 'zh';
+        updateUI();
+    }
+
+    function updateUI() {
+        const text = i18n[lang];
+        document.getElementById('ui-title').innerText = text['title'];
+        document.getElementById('btn-next').innerText = text['btn-next'];
+        document.getElementById('btn-reset').innerText = text['btn-reset'];
+        document.getElementById('ui-reg').innerText = text['ui-reg'];
+        document.getElementById('ui-mem').innerText = text['ui-mem'];
+        document.getElementById('ui-target-mem').innerText = text['ui-target-mem'];
+        document.getElementById('ui-logic-tag').innerText = text['ui-logic-tag'];
+        document.getElementById('ui-phys-tag').innerText = text['ui-phys-tag'];
+        
+        document.getElementById('ui-desc').innerHTML = text[`desc-${step}`];
+    }
+
+    function nextStep() {
+        if (step >= 3) return;
+        step++;
+        
+        const simArea = document.getElementById('sim-area');
+        simArea.className = 'simulation-area step-' + step;
+
+        if (step === 3) {
+            document.getElementById('btn-next').disabled = true;
+        }
+        
+        updateUI();
+    }
+
+    function resetSim() {
+        step = 0;
+        document.getElementById('sim-area').className = 'simulation-area';
+        document.getElementById('btn-next').disabled = false;
+        updateUI();
+    }
+
+    // Initialize UI on load
+    updateUI();
+</script>
+
+</body>
+</html>
+```eof

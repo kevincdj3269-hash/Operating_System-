@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OS Memory: Segmentation Management</title>
+    <style>
+        :root {
+            --bg: #f8fafc;
+            --text: #1e293b;
+            --primary: #4f46e5;
+            --secondary: #64748b;
+            --success: #059669;
+            --danger: #dc2626;
+            --warning: #d97706;
+            --border: #cbd5e1;
+            
+            --seg0: #3b82f6;
+            --seg1: #10b981;
+            --seg2: #f59e0b;
+            --hole: #e2e8f0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px;
+            margin: 0;
+            overflow-x: hidden;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+            max-width: 950px;
+            width: 100%;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+        }
+
+        h1 { margin: 0; font-size: 1.6rem; color: var(--primary); }
+
+        .btn-group button {
+            padding: 8px 16px;
+            margin-left: 10px;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .btn-lang { background: var(--secondary); }
+        .btn-reset { background: var(--danger); }
+        .btn-next { background: var(--primary); }
+        .btn-next:disabled { background: #94a3b8; cursor: not-allowed; }
+
+        .info-box {
+            background: #eef2ff;
+            border-left: 5px solid var(--primary);
+            padding: 15px 20px;
+            font-size: 1.1rem;
+            margin-bottom: 30px;
+            min-height: 80px;
+            line-height: 1.5;
+        }
+
+        /* Stage Layout */
+        .stage {
+            display: flex;
+            justify-content: space-around;
+            align-items: flex-start;
+            position: relative;
+            height: 550px;
+        }
+
+        .col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 2;
+        }
+        .col-title { font-weight: bold; margin-bottom: 15px; color: #334155; }
+
+        /* OS Manager Log */
+        .os-box {
+            background: #334155;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-align: center;
+            width: 250px;
+        }
+        .os-log {
+            background: #f1f5f9;
+            border: 2px dashed var(--border);
+            border-radius: 8px;
+            padding: 15px;
+            width: 250px;
+            min-height: 100px;
+            font-family: monospace;
+            font-size: 0.95rem;
+            color: #475569;
+            transition: all 0.3s;
+        }
+        .log-highlight { color: var(--danger); font-weight: bold; }
+        .log-success { color: var(--success); font-weight: bold; }
+
+        /* Segment Table */
+        .seg-table {
+            border-collapse: collapse;
+            background: white;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            border: 2px solid var(--border);
+            width: 100%;
+        }
+        .seg-table th { background: #334155; color: white; padding: 8px 15px; }
+        .seg-table td { padding: 8px 15px; text-align: center; border-bottom: 1px solid var(--border); font-family: monospace; font-size: 1.1rem; transition: all 0.5s; }
+        .base-val { display: inline-block; padding: 2px 5px; border-radius: 4px; transition: all 0.5s; }
+
+        /* Physical Memory */
+        .phys-mem {
+            width: 220px;
+            border: 3px solid #334155;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            height: 450px;
+            overflow: hidden;
+        }
+        
+        .pm-slot {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            position: absolute;
+            width: 100%;
+            transition: all 1s cubic-bezier(0.25, 0.8, 0.25, 1); /* Smooth movement for compaction */
+            box-sizing: border-box;
+            border-bottom: 1px solid rgba(0,0,0,0.2);
+        }
+        
+        .pm-addr {
+            position: absolute;
+            left: -45px;
+            color: #64748b;
+            font-size: 0.8rem;
+            font-family: monospace;
+            transition: all 1s;
+        }
+
+        .pm-frag-label {
+            position: absolute;
+            color: var(--danger);
+            font-weight: bold;
+            font-size: 0.9rem;
+            opacity: 0;
+            transition: opacity 0.5s;
+            z-index: 10;
+        }
+
+        /* Initial Segment Blocks */
+        #seg0 { background: var(--seg0); height: 100px; top: 0px; }
+        #seg1 { background: var(--seg1); height: 150px; top: 100px; }
+        #seg2 { background: var(--seg2); height: 100px; top: 250px; }
+        #hole { background: var(--hole); height: 100px; top: 350px; color: #94a3b8; border-bottom: none;}
+        #hole-label { top: 390px; }
+
+        /* Animation Steps Overlay */
+        
+        /* Step 1: Seg 1 terminates, creates hole */
+        .step-1 #seg1 { opacity: 0; transform: scale(0.9); }
+        .step-1 #row1 { color: #cbd5e1; text-decoration: line-through; }
+        .step-1 #frag-text { opacity: 1; top: 160px; left: 60px; }
+        .step-1 .os-log { border-color: var(--warning); background: #fffbeb; }
+
+        /* Step 2: Allocation failure due to fragmentation */
+        .step-2 #seg1 { opacity: 0; }
+        .step-2 #row1 { color: #cbd5e1; text-decoration: line-through; }
+        .step-2 #frag-text { opacity: 1; top: 160px; left: 60px; }
+        .step-2 .os-log { border-color: var(--danger); background: #fef2f2; }
+
+        /* Step 3: Compaction */
+        .step-3 #seg1 { opacity: 0; }
+        .step-3 #row1 { color: #cbd5e1; text-decoration: line-through; }
+        .step-3 #seg2 { top: 100px; } /* Moved up */
+        .step-3 #hole { height: 250px; top: 200px; } /* Hole combined at bottom */
+        .step-3 #addr-s2 { content: "100"; }
+        .step-3 #frag-text { opacity: 0; }
+        .step-3 .base-val-2 { background: var(--success); color: white; } /* Highlight Base Update */
+        .step-3 .os-log { border-color: var(--success); background: #ecfdf5; }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1 id="ui-title">記憶體管理：分段管理與壓縮 (Compaction)</h1>
+        <div class="btn-group">
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+            <button class="btn-reset" onclick="resetSim()">重置</button>
+            <button class="btn-next" id="btn-next" onclick="nextStep()">下一步</button>
+        </div>
+    </div>
+
+    <div class="info-box" id="ui-desc"></div>
+
+    <div class="stage" id="stage">
+        
+        <!-- OS Manager -->
+        <div class="col">
+            <div class="os-box">OS 記憶體管理員</div>
+            <div class="os-log" id="ui-log">
+                [系統啟動]<br>
+                > 載入 Seg 0<br>
+                > 載入 Seg 1<br>
+                > 載入 Seg 2<br>
+                > 系統運行中...
+            </div>
+
+            <div class="col-title" style="margin-top: 30px;" id="ui-st-title">行程段表 (Segment Table)</div>
+            <table class="seg-table">
+                <tr><th>Seg</th><th>Limit</th><th>Base</th></tr>
+                <tr><td>0</td><td>100</td><td>0</td></tr>
+                <tr id="row1"><td>1</td><td>150</td><td>100</td></tr>
+                <tr id="row2"><td>2</td><td>100</td><td><span class="base-val base-val-2" id="st-base2">250</span></td></tr>
+            </table>
+        </div>
+
+        <!-- Physical Memory -->
+        <div class="col">
+            <div class="col-title" id="ui-phys">實體記憶體</div>
+            <div class="phys-mem">
+                <span class="pm-frag-label" id="frag-text">外部碎裂<br>(150 Bytes)</span>
+                
+                <div class="pm-slot" id="seg0"><span class="pm-addr">0</span>Seg 0</div>
+                <div class="pm-slot" id="seg1"><span class="pm-addr">100</span>Seg 1</div>
+                <div class="pm-slot" id="seg2"><span class="pm-addr" id="addr-s2">250</span>Seg 2</div>
+                <div class="pm-slot" id="hole"><span class="pm-addr" id="hole-label">350</span><span id="ui-hole">空閒</span></div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    const i18n = {
+        'zh': {
+            'title': '記憶體管理：分段管理與壓縮 (Compaction)',
+            'btn-next': '下一步',
+            'btn-reset': '重置',
+            'ui-st-title': '行程段表 (Segment Table)',
+            'ui-phys': '實體記憶體',
+            'ui-hole': '空閒',
+            'frag-text': '外部碎裂<br>(150 Bytes)',
+            
+            'desc-0': '<b>初始狀態：</b> OS 將三個區段載入實體記憶體，並在<b>段表</b>中記錄它們的 Limit (長度) 與 Base (起始位址)。目前記憶體尾端剩餘 100 Bytes 空閒。',
+            'desc-1': '<b>步驟 1 (釋放區段)：</b> <code>Seg 1</code> 執行完畢被 OS 移除。段表中清除其紀錄。此時記憶體中間留下了一個 150 Bytes 的洞，這就是<b>外部碎裂 (External Fragmentation)</b>。',
+            'desc-2': '<b>步驟 2 (配置失敗)：</b> 此時一個新的程式要求 200 Bytes 的空間。雖然記憶體總共有 250 Bytes 空閒 (150 + 100)，但因為<b>不連續</b>，OS 無法配置，宣告失敗。',
+            'desc-3': '<b>步驟 3 (記憶體壓縮)：</b> OS 啟動<b>壓縮 (Compaction)</b> 機制！將 <code>Seg 2</code> 往上搬移填補空隙。<b>關鍵：</b>搬移後，OS 必須即時更新段表中 <code>Seg 2</code> 的 <b>Base 值 (250 → 100)</b>，否則程式將會崩潰！',
+            
+            'log-0': '[系統啟動]<br>> 載入 Seg 0<br>> 載入 Seg 1<br>> 載入 Seg 2<br>> 系統運行中...',
+            'log-1': '[事件]<br>> Seg 1 執行完畢。<br>> 回收 150 Bytes。<br>> <span class="log-highlight">警告：產生記憶體碎片。</span>',
+            'log-2': '[要求配置]<br>> 新區段要求 200 Bytes。<br>> 尋找連續空間...<br>> <span class="log-highlight">失敗：空間不連續！</span>',
+            'log-3': '[執行壓縮 Compaction]<br>> 暫停系統...<br>> 搬移 Seg 2 區塊...<br>> <span class="log-success">更新 Seg 2 段表 Base=100</span><br>> 壓縮完成，獲得連續 250 Bytes！'
+        },
+        'en': {
+            'title': 'Memory Management: Segmentation & Compaction',
+            'btn-next': 'Next Step',
+            'btn-reset': 'Reset',
+            'ui-st-title': 'Segment Table',
+            'ui-phys': 'Physical Memory',
+            'ui-hole': 'Free',
+            'frag-text': 'External<br>Fragmentation',
+            
+            'desc-0': '<b>Initial State:</b> The OS loads 3 segments into physical memory and records their Limit and Base in the <b>Segment Table</b>. There is 100 Bytes free at the end.',
+            'desc-1': '<b>Step 1 (Deallocation):</b> <code>Seg 1</code> finishes and is removed by the OS. Its entry is cleared. A 150 Byte hole is left in the middle. This is <b>External Fragmentation</b>.',
+            'desc-2': '<b>Step 2 (Allocation Failure):</b> A new program requests a 200 Byte segment. Although there is 250 Bytes total free (150 + 100), it is <b>not contiguous</b>. The OS allocation fails.',
+            'desc-3': '<b>Step 3 (Compaction):</b> The OS initiates <b>Compaction</b>! It moves <code>Seg 2</code> up to close the gap. <b>Crucial Management:</b> The OS MUST immediately update the <b>Base value (250 → 100)</b> for <code>Seg 2</code> in the Segment Table, otherwise the program will crash!',
+            
+            'log-0': '[System Boot]<br>> Load Seg 0<br>> Load Seg 1<br>> Load Seg 2<br>> System running...',
+            'log-1': '[Event]<br>> Seg 1 terminated.<br>> Reclaimed 150 Bytes.<br>> <span class="log-highlight">Warning: Fragmentation created.</span>',
+            'log-2': '[Allocation Request]<br>> New segment requests 200B.<br>> Searching contiguous space...<br>> <span class="log-highlight">Failed: Not contiguous!</span>',
+            'log-3': '[Executing Compaction]<br>> Suspending system...<br>> Moving Seg 2 block...<br>> <span class="log-success">Updated Seg 2 Table Base=100</span><br>> Done. Gained 250B contiguous space!'
+        }
+    };
+
+    let step = 0;
+    let lang = 'zh';
+
+    function toggleLang() {
+        lang = lang === 'zh' ? 'en' : 'zh';
+        updateUI();
+    }
+
+    function updateUI() {
+        const t = i18n[lang];
+        document.getElementById('ui-title').innerText = t['title'];
+        document.getElementById('btn-next').innerText = t['btn-next'];
+        document.getElementById('btn-reset').innerText = t['btn-reset'];
+        
+        document.getElementById('ui-st-title').innerText = t['ui-st-title'];
+        document.getElementById('ui-phys').innerText = t['ui-phys'];
+        document.getElementById('ui-hole').innerText = t['ui-hole'];
+        document.getElementById('frag-text').innerHTML = t['frag-text'];
+        
+        document.getElementById('ui-desc').innerHTML = t[`desc-${step}`];
+        document.getElementById('ui-log').innerHTML = t[`log-${step}`];
+
+        // Handle dynamic base address change text
+        if (step === 3) {
+            document.getElementById('st-base2').innerText = "100";
+            document.getElementById('addr-s2').innerText = "100";
+            document.getElementById('hole-label').innerText = "200";
+        } else {
+            document.getElementById('st-base2').innerText = "250";
+            document.getElementById('addr-s2').innerText = "250";
+            document.getElementById('hole-label').innerText = "350";
+        }
+    }
+
+    function nextStep() {
+        if (step < 3) {
+            step++;
+            document.getElementById('stage').className = 'stage step-' + step;
+            if (step === 3) document.getElementById('btn-next').disabled = true;
+            updateUI();
+        }
+    }
+
+    function resetSim() {
+        step = 0;
+        document.getElementById('stage').className = 'stage';
+        document.getElementById('btn-next').disabled = false;
+        updateUI();
+    }
+
+    // Init
+    updateUI();
+</script>
+
+</body>
+</html>

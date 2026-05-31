@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OS Memory: Paged Segmentation</title>
+    <style>
+        :root {
+            --bg: #f8fafc;
+            --text: #1e293b;
+            --cpu: #f59e0b; /* Amber */
+            --st: #8b5cf6;  /* Purple */
+            --pt: #3b82f6;  /* Blue */
+            --mem: #10b981; /* Green */
+            --border: #cbd5e1;
+            --highlight: #ef4444;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px;
+            margin: 0;
+            overflow-x: hidden;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+            max-width: 1100px;
+            width: 100%;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+        }
+
+        h1 { margin: 0; font-size: 1.5rem; color: #0f172a; }
+
+        .btn-group button {
+            padding: 8px 16px;
+            margin-left: 10px;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .btn-lang { background: #64748b; }
+        .btn-reset { background: #ef4444; }
+        .btn-next { background: var(--st); }
+        .btn-next:disabled { background: #94a3b8; cursor: not-allowed; }
+
+        .info-box {
+            background: #f3e8ff;
+            border-left: 5px solid var(--st);
+            padding: 15px 20px;
+            font-size: 1.1rem;
+            margin-bottom: 30px;
+            min-height: 80px;
+            line-height: 1.5;
+        }
+
+        /* Simulation Area */
+        .stage {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            position: relative;
+            height: 520px;
+            padding: 0 10px;
+        }
+
+        .col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 2;
+        }
+        .col-title { font-weight: bold; margin-bottom: 15px; font-size: 1.1rem; color: #334155;}
+
+        /* CPU / Logical Address */
+        .la-box {
+            border: 2px solid var(--cpu);
+            border-radius: 8px;
+            background: white;
+            padding: 10px;
+            text-align: center;
+            margin-top: 20px;
+        }
+        .la-full { font-size: 1.1rem; font-weight: bold; margin-bottom: 10px; color: var(--cpu); }
+        .la-split { display: flex; gap: 5px; }
+        .la-part { padding: 6px 10px; border-radius: 4px; font-weight: bold; color: white; font-size: 0.9rem;}
+        .part-s { background: #d97706; }
+        .part-p { background: #f59e0b; }
+        .part-d { background: #fcd34d; color: #78350f; }
+
+        /* Tables Common */
+        table { border-collapse: collapse; background: white; border: 2px solid var(--border); }
+        th { color: white; padding: 8px 12px; font-size: 0.9rem; }
+        td { padding: 8px 12px; text-align: center; border-bottom: 1px solid var(--border); font-family: monospace; font-size: 1rem; transition: background 0.3s; }
+
+        /* Segment Table */
+        .seg-table { border-color: var(--st); margin-top: 50px;}
+        .seg-table th { background: var(--st); }
+        .st-row { transition: all 0.4s; }
+
+        /* Page Table */
+        .pt-container { opacity: 0.3; transition: opacity 0.5s; margin-top: 80px; position: relative;}
+        .pt-title { font-size: 0.9rem; font-weight: bold; color: var(--pt); margin-bottom: 5px; text-align: center;}
+        .page-table { border-color: var(--pt); }
+        .page-table th { background: var(--pt); }
+        
+        /* Connection Line */
+        .conn-line {
+            position: absolute;
+            height: 3px;
+            background: var(--st);
+            top: 245px;
+            left: 375px;
+            width: 0px; /* Expands in step 1 */
+            transition: width 0.8s ease-in-out;
+            z-index: 1;
+        }
+        .conn-line::after {
+            content: "▶";
+            position: absolute;
+            right: -10px;
+            top: -12px;
+            color: var(--st);
+            font-size: 1.5rem;
+            opacity: 0;
+            transition: opacity 0.3s;
+            transition-delay: 0.8s;
+        }
+
+        /* Physical Memory */
+        .mem-map {
+            width: 200px;
+            border: 3px solid var(--mem);
+            background: white;
+            display: flex;
+            flex-direction: column;
+            margin-top: 10px;
+        }
+        .frame {
+            height: 45px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            color: #64748b;
+        }
+        .frame::before {
+            content: attr(data-label);
+            position: absolute;
+            left: -60px;
+            font-weight: bold;
+            color: var(--mem);
+            font-size: 0.9rem;
+        }
+        #target-frame { height: 60px; transition: all 0.5s; }
+
+        /* Animated Data Packets */
+        .anim-pkt {
+            position: absolute;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            opacity: 0;
+            z-index: 10;
+            transition: all 1s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+        #anim-s { background: #d97706; top: 120px; left: 45px; }
+        #anim-p { background: #f59e0b; top: 120px; left: 105px; }
+        #anim-d { background: #fcd34d; color: #78350f; top: 120px; left: 165px; }
+
+        /* Calc Box */
+        .calc-box {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            border: 3px solid var(--mem);
+            padding: 15px 25px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 1.1rem;
+            opacity: 0;
+            transition: opacity 0.5s;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        /* --- Steps Animation CSS --- */
+        
+        /* Step 1: s -> Seg Table */
+        .step-1 #anim-s { opacity: 1; top: 235px; left: 300px; transform: scale(1.1); box-shadow: 0 0 10px rgba(0,0,0,0.2); }
+        .step-1 #st-target { background: #ede9fe; font-weight: bold; color: var(--st); }
+        .step-1 .conn-line { width: 140px; }
+        .step-1 .conn-line::after { opacity: 1; }
+        .step-1 .pt-container { opacity: 1; }
+
+        /* Step 2: p -> Page Table */
+        .step-1 #anim-s { opacity: 0; transition-delay: 1s;} /* fade out s */
+        .step-2 .conn-line { width: 140px; }
+        .step-2 .conn-line::after { opacity: 1; }
+        .step-2 .pt-container { opacity: 1; }
+        .step-2 #st-target { background: #ede9fe; font-weight: bold; color: var(--st); }
+        
+        .step-2 #anim-p { opacity: 1; top: 295px; left: 560px; transform: scale(1.1); box-shadow: 0 0 10px rgba(0,0,0,0.2); }
+        .step-2 #pt-target { background: #dbeafe; font-weight: bold; color: var(--pt); }
+
+        /* Step 3: f + d -> Calc -> Mem */
+        .step-3 .conn-line { width: 140px; }
+        .step-3 .pt-container { opacity: 1; }
+        .step-3 #st-target { background: #ede9fe; font-weight: bold; color: var(--st); }
+        .step-3 #pt-target { background: #dbeafe; font-weight: bold; color: var(--pt); }
+        
+        .step-3 #anim-p { opacity: 1; top: 410px; left: 450px; background: var(--mem); content: "f = 8"; } /* conceptually becomes f */
+        .step-3 #anim-d { opacity: 1; top: 410px; left: 540px; }
+        .step-3 .calc-box { opacity: 1; }
+        .step-3 #target-frame { background: #d1fae5; font-weight: bold; color: var(--mem); border-left: 5px solid var(--mem); }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1 id="ui-title">記憶體管理：分頁式分段 (Paged Segmentation)</h1>
+        <div class="btn-group">
+            <button class="btn-lang" onclick="toggleLang()">EN / 中文</button>
+            <button class="btn-reset" onclick="resetSim()">重置</button>
+            <button class="btn-next" id="btn-next" onclick="nextStep()">下一步</button>
+        </div>
+    </div>
+
+    <div class="info-box" id="ui-desc"></div>
+
+    <div class="stage" id="stage">
+        
+        <div class="conn-line"></div>
+        <div class="anim-pkt" id="anim-s">s=1</div>
+        <div class="anim-pkt" id="anim-p">p=2</div>
+        <div class="anim-pkt" id="anim-d">d=50</div>
+        
+        <div class="calc-box" id="ui-calc">實體位址 = (8 × 1024) + 50<br>= <span style="color:var(--highlight)">8242</span></div>
+
+        <!-- Left: CPU -->
+        <div class="col" style="width: 200px;">
+            <div class="col-title" id="ui-cpu">CPU 邏輯位址</div>
+            <div class="la-box">
+                <div class="la-full">LA: &lt;1, 2, 50&gt;</div>
+                <div class="la-split">
+                    <div class="la-part part-s">s=1</div>
+                    <div class="la-part part-p">p=2</div>
+                    <div class="la-part part-d">d=50</div>
+                </div>
+            </div>
+            <div style="margin-top:20px; font-size:0.85rem; color:#64748b; text-align:center;" id="ui-note">
+                s: 段號 (Segment)<br>
+                p: 分頁號 (Page)<br>
+                d: 偏移量 (Offset)
+            </div>
+        </div>
+
+        <!-- Middle Left: Segment Table -->
+        <div class="col" style="width: 220px;">
+            <div class="col-title" id="ui-st-title">1. 行程段表<br>(Segment Table)</div>
+            <table class="seg-table">
+                <tr><th>Seg (s)</th><th id="ui-st-ptr">分頁表指標</th></tr>
+                <tr><td>0</td><td>Ptr -> PT_0</td></tr>
+                <tr id="st-target"><td>1</td><td>Ptr -> PT_1</td></tr>
+                <tr><td>2</td><td>Ptr -> PT_2</td></tr>
+            </table>
+        </div>
+
+        <!-- Middle Right: Page Table -->
+        <div class="col pt-container" style="width: 180px;">
+            <div class="pt-title" id="ui-pt-title">2. Seg 1 專屬分頁表<br>(Page Table 1)</div>
+            <table class="page-table">
+                <tr><th>Page (p)</th><th>Frame (f)</th></tr>
+                <tr><td>0</td><td>12</td></tr>
+                <tr><td>1</td><td>4</td></tr>
+                <tr id="pt-target"><td>2</td><td style="color:var(--highlight); font-weight:bold;">8</td></tr>
+                <tr><td>3</td><td>15</td></tr>
+            </table>
+        </div>
+
+        <!-- Right: Physical Memory -->
+        <div class="col" style="width: 220px;">
+            <div class="col-title" id="ui-mem">3. 實體記憶體</div>
+            <div class="mem-map">
+                <div class="frame" data-label="Frame 0">OS</div>
+                <div class="frame" data-label="...">...</div>
+                <div class="frame" data-label="Frame 4">Seg 1, Page 1</div>
+                <div class="frame" data-label="...">...</div>
+                <div class="frame" id="target-frame" data-label="Frame 8"><span id="ui-target-txt">目標資料</span></div>
+                <div class="frame" data-label="...">...</div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    const i18n = {
+        'zh': {
+            'title': '記憶體管理：分頁式分段 (Paged Segmentation)',
+            'btn-next': '下一步',
+            'btn-reset': '重置',
+            'ui-cpu': 'CPU 邏輯位址',
+            'ui-note': 's: 段號 (Segment)<br>p: 分頁號 (Page)<br>d: 偏移量 (Offset)',
+            'ui-st-title': '1. 行程段表<br>(Segment Table)',
+            'ui-st-ptr': '分頁表指標',
+            'ui-pt-title': '2. Seg 1 專屬分頁表<br>(Page Table 1)',
+            'ui-mem': '3. 實體記憶體',
+            'ui-target-txt': '目標資料 (Seg 1, Pg 2)',
+            'calc-txt': '實體位址 = (8 × 1024) + 50<br>= <span style="color:var(--highlight)">8242</span>',
+            'anim-p-2': 'f=8',
+            
+            'desc-0': '<b>初始狀態：</b> CPU 發出三維的邏輯位址：<code>&lt;s=1, p=2, d=50&gt;</code>。在分頁式分段中，每個區段(Segment)都有自己獨立的一份分頁表(Page Table)。',
+            'desc-1': '<b>步驟 1 (查段表)：</b> 硬體首先取出段號 <code>s=1</code>，前往<b>段表</b>查詢。找到後，段表並未給出實體位址，而是給出了「<b>Seg 1 專屬分頁表的位址指標</b>」。',
+            'desc-2': '<b>步驟 2 (查分頁表)：</b> 硬體順著指標來到 Seg 1 的分頁表。接著取出分頁號 <code>p=2</code> 查表，得知該頁面被存放在實體記憶體的 <b>Frame 8</b>。',
+            'desc-3': '<b>步驟 3 (合成與存取)：</b> 取得 <code>f=8</code> 後，將其與不變的偏移量 <code>d=50</code> 合成。計算 PA = (8×1024) + 50 = 8242。成功跨越兩層表格，找到實體記憶體資料！'
+        },
+        'en': {
+            'title': 'Memory Management: Paged Segmentation',
+            'btn-next': 'Next Step',
+            'btn-reset': 'Reset',
+            'ui-cpu': 'CPU Logical Addr',
+            'ui-note': 's: Segment Num<br>p: Page Num<br>d: Offset',
+            'ui-st-title': '1. Segment Table<br>(Per Process)',
+            'ui-st-ptr': 'Page Table Ptr',
+            'ui-pt-title': '2. Page Table<br>(For Seg 1)',
+            'ui-mem': '3. Physical Memory',
+            'ui-target-txt': 'Target (Seg 1, Pg 2)',
+            'calc-txt': 'Physical Addr = (8 × 1024) + 50<br>= <span style="color:var(--highlight)">8242</span>',
+            'anim-p-2': 'f=8',
+            
+            'desc-0': '<b>Initial State:</b> CPU issues a 3D logical address: <code>&lt;s=1, p=2, d=50&gt;</code>. In paged segmentation, every segment has its own independent Page Table.',
+            'desc-1': '<b>Step 1 (Segment Table Lookup):</b> Hardware takes <code>s=1</code> to search the <b>Segment Table</b>. Instead of a physical address, it finds a "<b>Pointer to Seg 1\'s Page Table</b>".',
+            'desc-2': '<b>Step 2 (Page Table Lookup):</b> Following the pointer, hardware arrives at Seg 1\'s Page Table. It uses <code>p=2</code> to find that the page is stored in <b>Frame 8</b>.',
+            'desc-3': '<b>Step 3 (Combine & Access):</b> Hardware combines <code>f=8</code> with the offset <code>d=50</code>. PA = (8×1024) + 50 = 8242. Data successfully accessed after a two-level table walk!'
+        }
+    };
+
+    let step = 0;
+    let lang = 'zh';
+
+    function toggleLang() {
+        lang = lang === 'zh' ? 'en' : 'zh';
+        updateUI();
+    }
+
+    function updateUI() {
+        const t = i18n[lang];
+        document.getElementById('ui-title').innerText = t['title'];
+        document.getElementById('btn-next').innerText = t['btn-next'];
+        document.getElementById('btn-reset').innerText = t['btn-reset'];
+        
+        document.getElementById('ui-cpu').innerText = t['ui-cpu'];
+        document.getElementById('ui-note').innerHTML = t['ui-note'];
+        document.getElementById('ui-st-title').innerHTML = t['ui-st-title'];
+        document.getElementById('ui-st-ptr').innerText = t['ui-st-ptr'];
+        document.getElementById('ui-pt-title').innerHTML = t['ui-pt-title'];
+        document.getElementById('ui-mem').innerText = t['ui-mem'];
+        document.getElementById('ui-target-txt').innerText = t['ui-target-txt'];
+        document.getElementById('ui-calc').innerHTML = t['calc-txt'];
+        
+        document.getElementById('ui-desc').innerHTML = t[`desc-${step}`];
+
+        // Dynamic element updates
+        if (step >= 3) {
+            document.getElementById('anim-p').innerText = t['anim-p-2'];
+        } else {
+            document.getElementById('anim-p').innerText = 'p=2';
+        }
+    }
+
+    function nextStep() {
+        if (step < 3) {
+            step++;
+            document.getElementById('stage').className = 'stage step-' + step;
+            if (step === 3) document.getElementById('btn-next').disabled = true;
+            updateUI();
+        }
+    }
+
+    function resetSim() {
+        step = 0;
+        document.getElementById('stage').className = 'stage';
+        document.getElementById('btn-next').disabled = false;
+        updateUI();
+    }
+
+    // Init
+    updateUI();
+</script>
+
+</body>
+</html>
