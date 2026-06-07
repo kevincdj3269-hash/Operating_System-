@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Second Chance (Clock) Algorithm</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 850px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        h1 { margin: 0; font-size: 24px; color: #4db8ff; }
+        
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background-color: #007acc;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            transition: background 0.2s, transform 0.1s;
+        }
+        button:hover { background-color: #005999; }
+        button:active { transform: scale(0.97); }
+        button:disabled { background-color: #444; color: #888; cursor: not-allowed; }
+
+        .animation-container {
+            width: 850px;
+            height: 450px;
+            background-color: #1e1e1e;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+            border: 1px solid #333;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        /* 環狀時鐘佈局 */
+        .clock-center {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background-color: #ffeb3b;
+            border-radius: 50%;
+            z-index: 10;
+            box-shadow: 0 0 15px #ffeb3b;
+        }
+        
+        .clock-hand {
+            position: absolute;
+            width: 4px;
+            height: 110px;
+            background-color: #ffeb3b;
+            bottom: 50%;
+            left: calc(50% - 2px);
+            transform-origin: bottom center;
+            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 9;
+            box-shadow: 0 0 10px #ffeb3b;
+        }
+
+        .frame {
+            position: absolute;
+            width: 90px;
+            height: 110px;
+            border: 3px dashed #555;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(255,255,255,0.02);
+            transition: all 0.3s;
+        }
+        
+        /* 角度定位：0度(上), 120度(右下), 240度(左下) */
+        /* Center is at 50%, 50%. Radius ~ 150px */
+        #frame-0 { top: calc(50% - 150px - 55px); left: calc(50% - 45px); }
+        #frame-1 { top: calc(50% + 75px - 55px); left: calc(50% + 130px - 45px); }
+        #frame-2 { top: calc(50% + 75px - 55px); left: calc(50% - 130px - 45px); }
+
+        .page {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #2196f3, #1565c0);
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            transition: all 0.5s;
+        }
+        .page-id { font-size: 32px; font-weight: bold; }
+        
+        .r-bit {
+            margin-top: 5px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: bold;
+            font-family: monospace;
+            transition: all 0.4s;
+        }
+        .r-bit.one { background-color: #4caf50; color: white; box-shadow: 0 0 8px #4caf50;}
+        .r-bit.zero { background-color: #f44336; color: white; box-shadow: 0 0 8px #f44336;}
+
+        /* 高亮檢查效果 */
+        .frame.checking {
+            border-color: #ffeb3b;
+            box-shadow: 0 0 20px rgba(255, 235, 59, 0.4);
+            transform: scale(1.1);
+        }
+
+        .desc-box {
+            width: 100%;
+            max-width: 810px;
+            background-color: #252526;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 5px solid #ffeb3b;
+            font-size: 17px;
+            line-height: 1.6;
+            min-height: 100px;
+        }
+
+        .controls { margin-top: 25px; display: flex; gap: 15px; }
+        code { background: #000; padding: 2px 6px; border-radius: 4px; color: #ffeb3b; }
+
+        .sys-status {
+            position: absolute;
+            top: 20px;
+            left: 30px;
+            background: rgba(0,0,0,0.5);
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: 1px solid #444;
+            font-size: 16px;
+        }
+        .status-alert { color: #f44336; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1 id="title">二次機會演算法 (時鐘演算法)</h1>
+        <button onclick="toggleLang()" id="langBtn">Switch to English</button>
+    </div>
+
+    <div class="animation-container">
+        
+        <div class="sys-status">
+            <div id="lbl-task" style="color:#aaa; font-size: 14px; margin-bottom:5px;">系統事件：</div>
+            <div id="sys-event" style="font-weight:bold; color:#4db8ff;">準備執行</div>
+        </div>
+
+        <div class="clock-center"></div>
+        <div class="clock-hand" id="hand"></div>
+
+        <div class="frame" id="frame-0">
+            <div class="page" id="page-0">
+                <div class="page-id" id="pid-0">A</div>
+                <div class="r-bit one" id="pr-0">R=1</div>
+            </div>
+        </div>
+
+        <div class="frame" id="frame-1">
+            <div class="page" id="page-1">
+                <div class="page-id" id="pid-1">B</div>
+                <div class="r-bit one" id="pr-1">R=1</div>
+            </div>
+        </div>
+
+        <div class="frame" id="frame-2">
+            <div class="page" id="page-2">
+                <div class="page-id" id="pid-2">C</div>
+                <div class="r-bit zero" id="pr-2">R=0</div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="desc-box" id="description">
+        請點擊「下一步」開始演繹時鐘指標的巡邏過程。
+    </div>
+
+    <div class="controls">
+        <button onclick="prevStep()" id="prevBtn" disabled>上一步</button>
+        <button onclick="nextStep()" id="nextBtn">下一步</button>
+    </div>
+
+    <script>
+        let currentLang = 'zh';
+        let currentStep = 0;
+        const totalSteps = 6;
+
+        // UI 節點
+        const hand = document.getElementById('hand');
+        const frames = [document.getElementById('frame-0'), document.getElementById('frame-1'), document.getElementById('frame-2')];
+        const pids = [document.getElementById('pid-0'), document.getElementById('pid-1'), document.getElementById('pid-2')];
+        const prs = [document.getElementById('pr-0'), document.getElementById('pr-1'), document.getElementById('pr-2')];
+        const sysEvent = document.getElementById('sys-event');
+
+        // 定義演繹邏輯
+        const timeline = [
+            { ptr: 0, chk: -1, evt: 'zh:待命狀態|en:Idle',
+              f0: {id: 'A', r: 1}, f1: {id: 'B', r: 1}, f2: {id: 'C', r: 0},
+              zh: "<strong>初始狀態：</strong>記憶體環狀佇列已滿。A 剛被存取過 (R=1)，B 也剛被存取過 (R=1)，C 很久沒被存取了 (R=0)。時鐘指標 (黃線) 目前指向最老的 Frame 0 (A)。", 
+              en: "<strong>Initial State:</strong> Circular queue is full. A & B were recently accessed (R=1). C has not been used recently (R=0). The clock hand (yellow line) points to the oldest Frame 0 (A)." },
+            
+            { ptr: 0, chk: 0, evt: 'zh:缺頁！需要載入 D|en:Page Fault! Load D',
+              f0: {id: 'A', r: 1}, f1: {id: 'B', r: 1}, f2: {id: 'C', r: 0},
+              zh: "<strong>步驟 1：</strong>CPU 請求 <code>Page D</code>，發生缺頁錯誤！作業系統喚醒時鐘演算法。首先檢查指標目前的目標：<strong>Page A</strong>。", 
+              en: "<strong>Step 1:</strong> CPU requests <code>Page D</code>. Page Fault! Clock algorithm awakens. It first checks the pointed target: <strong>Page A</strong>." },
+            
+            { ptr: 1, chk: -1, evt: 'zh:給予 A 二次機會|en:Second chance for A',
+              f0: {id: 'A', r: 0}, f1: {id: 'B', r: 1}, f2: {id: 'C', r: 0},
+              zh: "<strong>步驟 2：</strong>發現 A 的 <code>R=1</code>。作業系統心想：「它最近有被用到，饒它一命」。於是<strong>將 A 的 R 設為 0</strong>，消耗掉它的二次機會，並將指標順時針推進到 B。", 
+              en: "<strong>Step 2:</strong> A has <code>R=1</code>. The OS grants a second chance! It <strong>clears A's R to 0</strong> and advances the clock hand clockwise to B." },
+            
+            { ptr: 1, chk: 1, evt: 'zh:檢查 B|en:Checking B',
+              f0: {id: 'A', r: 0}, f1: {id: 'B', r: 1}, f2: {id: 'C', r: 0},
+              zh: "<strong>步驟 3：</strong>現在檢查 <strong>Page B</strong>。發現 B 的 <code>R=1</code>。", 
+              en: "<strong>Step 3:</strong> Now checking <strong>Page B</strong>. It finds B's <code>R=1</code>." },
+            
+            { ptr: 2, chk: 2, evt: 'zh:給予 B 二次機會，檢查 C|en:Chance for B, Check C',
+              f0: {id: 'A', r: 0}, f1: {id: 'B', r: 0}, f2: {id: 'C', r: 0},
+              zh: "<strong>步驟 4：</strong>同樣給予 B 二次機會！<strong>將 B 的 R 設為 0</strong>，指標繼續推進。現在指標來到了 <strong>Page C</strong>，準備檢查。", 
+              en: "<strong>Step 4:</strong> Second chance for B! <strong>B's R is set to 0</strong>, pointer advances. The hand now reaches <strong>Page C</strong>, preparing to check." },
+            
+            { ptr: 2, chk: 2, evt: 'zh:命中受害者 C|en:Victim Found: C',
+              f0: {id: 'A', r: 0}, f1: {id: 'B', r: 0}, f2: {id: 'C', r: 0},
+              zh: "<strong>步驟 5：</strong>檢查 C，發現 <strong><code>R=0</code></strong>！C 既是隊伍中最老的，而且最近完全沒有被存取過。查票員找到要踢下車的對象了！", 
+              en: "<strong>Step 5:</strong> Checking C reveals <strong><code>R=0</code></strong>! C is old and hasn't been used recently. The victim is found!" },
+            
+            { ptr: 0, chk: -1, evt: 'zh:置換完成|en:Replacement Complete',
+              f0: {id: 'A', r: 0}, f1: {id: 'B', r: 0}, f2: {id: 'D', r: 1}, isReplace: true,
+              zh: "<strong>步驟 6：</strong>作業系統<strong>將 C 踢出，換入全新的 D</strong>。新來的 D 會被賦予 <code>R=1</code>。隨後，時鐘指標繼續往前走一格停在 A，等待下一次缺頁中斷。", 
+              en: "<strong>Step 6:</strong> OS <strong>evicts C and loads the new D</strong>. D gets <code>R=1</code>. The clock hand advances one step and rests on A, waiting for the next Page Fault." }
+        ];
+
+        const angles = [0, 120, 240];
+
+        const i18n = {
+            zh: {
+                title: "二次機會演算法 (時鐘演算法)",
+                langBtn: "Switch to English",
+                prevBtn: "上一步",
+                nextBtn: "下一步",
+                lblTask: "系統事件："
+            },
+            en: {
+                title: "Second Chance (Clock) Algorithm",
+                langBtn: "切換至中文",
+                prevBtn: "Previous",
+                nextBtn: "Next",
+                lblTask: "System Event:"
+            }
+        };
+
+        function updateUI() {
+            document.getElementById('title').innerText = i18n[currentLang].title;
+            document.getElementById('langBtn').innerText = i18n[currentLang].langBtn;
+            document.getElementById('prevBtn').innerText = i18n[currentLang].prevBtn;
+            document.getElementById('nextBtn').innerText = i18n[currentLang].nextBtn;
+            document.getElementById('lbl-task').innerText = i18n[currentLang].lblTask;
+            
+            const state = timeline[currentStep];
+            document.getElementById('description').innerHTML = currentLang === 'zh' ? state.zh : state.en;
+            
+            let evtText = currentLang === 'zh' ? state.evt.split('|')[0].replace('zh:','') : state.evt.split('|')[1].replace('en:','');
+            sysEvent.innerHTML = evtText;
+            if(evtText.includes('缺頁') || evtText.includes('Fault')) sysEvent.className = 'status-alert';
+            else sysEvent.className = '';
+
+            document.getElementById('prevBtn').disabled = currentStep === 0;
+            document.getElementById('nextBtn').disabled = currentStep === totalSteps;
+
+            // 時鐘指標旋轉
+            // 為了避免 240 -> 0 逆轉，計算累積角度
+            let targetAngle = angles[state.ptr];
+            if (currentStep === 6 && state.ptr === 0) targetAngle = 360; // 順時針繞一圈
+            hand.style.transform = `rotate(${targetAngle}deg)`;
+
+            // 檢查高亮
+            frames.forEach((f, idx) => {
+                if (idx === state.chk) f.classList.add('checking');
+                else f.classList.remove('checking');
+            });
+
+            // 更新頁面資料
+            const frameData = [state.f0, state.f1, state.f2];
+            for(let i=0; i<3; i++) {
+                pids[i].innerText = frameData[i].id;
+                
+                if(frameData[i].r === 1) {
+                    prs[i].innerText = "R=1";
+                    prs[i].className = "r-bit one";
+                } else {
+                    prs[i].innerText = "R=0";
+                    prs[i].className = "r-bit zero";
+                }
+
+                // 置換特效
+                const pageNode = document.getElementById('page-' + i);
+                if (state.isReplace && i === 2) {
+                    pageNode.style.background = 'linear-gradient(135deg, #9c27b0, #6a1b9a)';
+                    setTimeout(() => { pageNode.style.background = 'linear-gradient(135deg, #2196f3, #1565c0)'; }, 600);
+                }
+            }
+        }
+
+        function toggleLang() {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            updateUI();
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps) {
+                currentStep++;
+                updateUI();
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 0) {
+                currentStep--;
+                updateUI();
+            }
+        }
+
+        // 初始載入
+        updateUI();
+    </script>
+</body>
+</html>

@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Page Fault Handling Time Animation</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1e1e2f;
+            color: #f8f8f2;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px;
+            margin: 0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 900px;
+            border-bottom: 2px solid #44475a;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        h1 { margin: 0; font-size: 26px; color: #ff79c6; }
+        
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background-color: #bd93f9;
+            color: #282a36;
+            font-size: 15px;
+            font-weight: bold;
+            transition: background 0.2s, transform 0.1s;
+        }
+        button:hover { background-color: #ff79c6; }
+        button:active { transform: scale(0.97); }
+        button:disabled { background-color: #6272a4; color: #f8f8f2; cursor: not-allowed; opacity: 0.6; }
+
+        .animation-container {
+            position: relative;
+            width: 900px;
+            height: 480px;
+            background-color: #282a36;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+            overflow: hidden;
+            margin-bottom: 25px;
+            border: 1px solid #44475a;
+        }
+        
+        /* 系統元件 */
+        .component {
+            position: absolute;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            text-align: center;
+        }
+        .cpu { top: 60px; left: 50px; width: 100px; height: 100px; background: #ff5555; border: 3px solid #ffb86c; z-index: 2; }
+        .ram { top: 60px; left: 400px; width: 120px; height: 100px; background: #50fa7b; color: #282a36; z-index: 2; }
+        .disk { top: 300px; left: 400px; width: 140px; height: 100px; background: #8be9fd; color: #282a36; z-index: 2; border-radius: 20px; }
+
+        /* 路徑線 */
+        .line-fast { position: absolute; top: 105px; left: 150px; width: 250px; height: 4px; background: #44475a; z-index: 1;}
+        .line-slow { position: absolute; top: 160px; left: 458px; width: 4px; height: 140px; background: #44475a; z-index: 1;}
+
+        /* 動畫點 */
+        .data-dot {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background-color: #f1fa8c;
+            box-shadow: 0 0 15px #f1fa8c;
+            opacity: 0;
+            z-index: 3;
+        }
+
+        /* 儀表板 / 計時器 */
+        .dashboard {
+            position: absolute;
+            top: 60px;
+            right: 50px;
+            width: 250px;
+            background: #44475a;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+        }
+        .dash-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 15px; }
+        .dash-val { font-family: monospace; font-size: 16px; color: #50fa7b; }
+        .alert { color: #ff5555; font-weight: bold; display: none; }
+
+        /* 時鐘動畫 */
+        .clock-container {
+            position: absolute;
+            top: 250px;
+            right: 100px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+        .clock {
+            width: 60px; height: 60px; border: 4px solid #f8f8f2; border-radius: 50%;
+            position: relative; margin-bottom: 10px;
+        }
+        .hand {
+            width: 2px; height: 25px; background: #ff79c6; position: absolute;
+            top: 5px; left: 29px; transform-origin: bottom center;
+        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        .spin-fast { animation: spin 0.2s linear infinite; }
+        .spin-slow { animation: spin 2s linear infinite; }
+
+        .desc-box {
+            width: 100%;
+            max-width: 860px;
+            background-color: #282a36;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 6px solid #bd93f9;
+            font-size: 18px;
+            line-height: 1.6;
+            min-height: 100px;
+        }
+
+        .controls { margin-top: 25px; display: flex; gap: 15px; }
+        .math-eq { font-family: 'Courier New', Courier, monospace; background: #000; padding: 2px 6px; border-radius: 4px; color: #8be9fd;}
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1 id="title">分頁錯誤處理時間演繹</h1>
+        <button onclick="toggleLang()" id="langBtn">Switch to English</button>
+    </div>
+
+    <div class="animation-container">
+        <div class="line-fast"></div>
+        <div class="line-slow"></div>
+
+        <div class="component cpu">CPU</div>
+        <div class="component ram" id="lbl-ram">RAM<br>(25 ns)</div>
+        <div class="component disk" id="lbl-disk">Disk<br>(25 ms)</div>
+
+        <div class="data-dot" id="dot"></div>
+
+        <div class="dashboard">
+            <h3 style="margin-top:0; color:#bd93f9; border-bottom:1px solid #6272a4; padding-bottom:5px;" id="lbl-dash-title">效能監視器</h3>
+            <div class="dash-row">
+                <span id="lbl-mem-time">記憶體存取 (m):</span>
+                <span class="dash-val">25 ns</span>
+            </div>
+            <div class="dash-row">
+                <span id="lbl-pf-time">處理分頁錯誤 (t):</span>
+                <span class="dash-val" style="color:#ff5555;">25,000,000 ns</span>
+            </div>
+            <div class="dash-row">
+                <span id="lbl-ratio">時間比例:</span>
+                <span class="dash-val">1 : 1,000,000</span>
+            </div>
+            <div class="dash-row alert" id="pf-alert">⚠️ PAGE FAULT!</div>
+        </div>
+
+        <div class="clock-container" id="clock-box">
+            <div class="clock"><div class="hand" id="clock-hand"></div></div>
+            <span style="color:#ff79c6; font-weight:bold;" id="lbl-waiting">OS 等待 I/O 中...</span>
+        </div>
+    </div>
+
+    <div class="desc-box" id="description">
+        請點擊「下一步」開始演繹虛擬記憶體的時間成本。
+    </div>
+
+    <div class="controls">
+        <button onclick="prevStep()" id="prevBtn" disabled>上一步</button>
+        <button onclick="nextStep()" id="nextBtn">下一步</button>
+    </div>
+
+    <script>
+        let currentLang = 'zh';
+        let currentStep = 0;
+        const totalSteps = 5;
+
+        const dot = document.getElementById('dot');
+        const alertBox = document.getElementById('pf-alert');
+        const clockBox = document.getElementById('clock-box');
+        const clockHand = document.getElementById('clock-hand');
+
+        const i18n = {
+            zh: {
+                title: "分頁錯誤處理時間演繹",
+                langBtn: "Switch to English",
+                prevBtn: "上一步",
+                nextBtn: "下一步",
+                ram: "實體記憶體<br>(25 ns)",
+                disk: "輔助記憶體<br>(25 ms)",
+                dashTitle: "效能監視器",
+                lblMem: "記憶體存取 (m):",
+                lblPf: "處理分頁錯誤 (t):",
+                lblRatio: "時間比例:",
+                lblWaiting: "OS 等待磁碟 I/O 中...",
+                steps: [
+                    "<strong>初始狀態：</strong>CPU 準備存取記憶體。我們設定純記憶體存取時間為 <span class='math-eq'>m = 25 ns</span>，而處理一次分頁錯誤需要 <span class='math-eq'>t = 25 ms</span> (等於 25,000,000 ns)。兩者差距高達一百萬倍。",
+                    "<strong>步驟 1 (未發生分頁錯誤)：</strong>CPU 發出請求，資料存在於 RAM 中 (Page Hit)。這是一次極速的存取，僅花費 25 奈秒。",
+                    "<strong>步驟 2 (發生分頁錯誤)：</strong>CPU 請求另一筆資料，但不在 RAM 中。觸發 <strong>Page Fault</strong>！作業系統必須介入，轉向輔助記憶體尋找資料。",
+                    "<strong>步驟 3 (漫長的硬碟存取)：</strong>作業系統花費大量時間進行控制權轉移、尋找頁框，並執行極度緩慢的磁碟 I/O。這個過程耗時 <span class='math-eq'>t = 25,000,000 ns</span>。CPU 在此期間可能被迫閒置或切換行程。",
+                    "<strong>步驟 4 (計算效能衝擊)：</strong>假設 1000 次存取中只有 1 次發生分頁錯誤。<br>總時間：<span class='math-eq'>1次(25,000,000 + 25) + 999次(25) = 25,025,000 ns</span>",
+                    "<strong>總結 (有效存取時間 EAT)：</strong>將總時間平均分攤給 1000 次存取：<br><span class='math-eq'>25,025,000 / 1000 ≈ 25,000 ns (25 微秒)</span>。<br>結論：哪怕只有千分之一的錯誤率，整體效能也會暴跌 <strong>1000 倍</strong>！這就是為何分頁演算法如此重要。"
+                ]
+            },
+            en: {
+                title: "Page Fault Handling Time Animation",
+                langBtn: "切換至中文",
+                prevBtn: "Previous",
+                nextBtn: "Next",
+                ram: "RAM<br>(25 ns)",
+                disk: "Disk<br>(25 ms)",
+                dashTitle: "Performance Monitor",
+                lblMem: "Memory Access (m):",
+                lblPf: "Page Fault Time (t):",
+                lblRatio: "Time Ratio:",
+                lblWaiting: "OS waiting for Disk I/O...",
+                steps: [
+                    "<strong>Initial State:</strong> CPU is ready. Memory access takes <span class='math-eq'>m = 25 ns</span>. Handling a page fault takes <span class='math-eq'>t = 25 ms</span> (25,000,000 ns). The difference is 1,000,000 times.",
+                    "<strong>Step 1 (No Page Fault):</strong> CPU requests data, and it's in RAM (Page Hit). This is a lightning-fast operation taking exactly 25 ns.",
+                    "<strong>Step 2 (Page Fault Occurs):</strong> CPU requests data not in RAM. A <strong>Page Fault</strong> is triggered! The OS intercepts and prepares to fetch data from disk.",
+                    "<strong>Step 3 (Slow Disk I/O):</strong> The OS spends massive amounts of time handling interrupts, finding frames, and reading the mechanical disk. This takes <span class='math-eq'>t = 25,000,000 ns</span>.",
+                    "<strong>Step 4 (Impact Calculation):</strong> Assume 1 page fault occurs per 1000 accesses.<br>Total Time: <span class='math-eq'>1 fault(25,000,000 + 25) + 999 hits(25) = 25,025,000 ns</span>",
+                    "<strong>Summary (Effective Access Time):</strong> Average time per access:<br><span class='math-eq'>25,025,000 / 1000 ≈ 25,000 ns (25 µs)</span>.<br>Conclusion: A mere 0.1% fault rate slows down the entire system by <strong>1000x</strong>! This shows why page replacement algorithms are critical."
+                ]
+            }
+        };
+
+        function updateUI() {
+            // 文字更新
+            document.getElementById('title').innerText = i18n[currentLang].title;
+            document.getElementById('langBtn').innerText = i18n[currentLang].langBtn;
+            document.getElementById('prevBtn').innerText = i18n[currentLang].prevBtn;
+            document.getElementById('nextBtn').innerText = i18n[currentLang].nextBtn;
+            document.getElementById('lbl-ram').innerHTML = i18n[currentLang].ram;
+            document.getElementById('lbl-disk').innerHTML = i18n[currentLang].disk;
+            document.getElementById('lbl-dash-title').innerText = i18n[currentLang].dashTitle;
+            document.getElementById('lbl-mem-time').innerText = i18n[currentLang].lblMem;
+            document.getElementById('lbl-pf-time').innerText = i18n[currentLang].lblPf;
+            document.getElementById('lbl-ratio').innerText = i18n[currentLang].lblRatio;
+            document.getElementById('lbl-waiting').innerText = i18n[currentLang].lblWaiting;
+            document.getElementById('description').innerHTML = i18n[currentLang].steps[currentStep];
+
+            // 按鈕與警示
+            document.getElementById('prevBtn').disabled = currentStep === 0;
+            document.getElementById('nextBtn').disabled = currentStep === totalSteps;
+            alertBox.style.display = (currentStep >= 2 && currentStep <= 3) ? 'block' : 'none';
+
+            // 重置動畫屬性
+            dot.style.transition = 'none';
+            clockBox.style.opacity = '0';
+            clockHand.className = 'hand';
+
+            // 強制重繪
+            void dot.offsetWidth;
+
+            switch(currentStep) {
+                case 0:
+                    dot.style.opacity = '0';
+                    dot.style.top = '100px'; dot.style.left = '90px';
+                    break;
+                case 1: // Fast RAM hit
+                    dot.style.opacity = '1';
+                    dot.style.top = '100px'; dot.style.left = '90px';
+                    dot.style.transition = 'all 0.2s ease-out'; // 極快
+                    setTimeout(() => { dot.style.left = '400px'; }, 50);
+                    break;
+                case 2: // Page Fault trigger
+                    dot.style.opacity = '1';
+                    dot.style.top = '100px'; dot.style.left = '90px';
+                    dot.style.transition = 'all 0.2s ease-out';
+                    setTimeout(() => { dot.style.left = '450px'; }, 50);
+                    setTimeout(() => { dot.style.top = '160px'; }, 250); // 停在 RAM 與 Disk 之間
+                    break;
+                case 3: // Disk I/O (慢速)
+                    dot.style.opacity = '1';
+                    dot.style.top = '160px'; dot.style.left = '450px';
+                    clockBox.style.opacity = '1';
+                    clockHand.className = 'hand spin-slow'; // 表現時間漫長
+                    dot.style.transition = 'all 3s linear'; // 極慢的移動
+                    setTimeout(() => { dot.style.top = '320px'; }, 50);
+                    break;
+                case 4: // 回到 RAM 後解開
+                case 5:
+                    dot.style.opacity = '1';
+                    dot.style.top = '100px'; dot.style.left = '400px';
+                    clockBox.style.opacity = '0';
+                    break;
+            }
+        }
+
+        function toggleLang() {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            updateUI();
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps) {
+                currentStep++;
+                updateUI();
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 0) {
+                currentStep--;
+                updateUI();
+            }
+        }
+
+        // 初始化
+        updateUI();
+    </script>
+</body>
+</html>

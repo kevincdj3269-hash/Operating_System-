@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proportional Allocation Animation</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 900px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        h1 { margin: 0; font-size: 24px; color: #4db8ff; }
+        
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background-color: #007acc;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            transition: background 0.2s, transform 0.1s;
+        }
+        button:hover { background-color: #005999; }
+        button:active { transform: scale(0.97); }
+        button:disabled { background-color: #444; color: #888; cursor: not-allowed; }
+
+        .animation-container {
+            width: 900px;
+            height: 500px;
+            background-color: #1e1e1e;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+            border: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+            position: relative;
+        }
+
+        /* 計算公式區塊 */
+        .math-panel {
+            width: 90%;
+            background: #252526;
+            border: 1px dashed #555;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            font-size: 16px;
+            text-align: center;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+        .formula { font-family: monospace; color: #ffeb3b; font-size: 18px; margin: 10px 0;}
+        .highlight-calc { color: #4db8ff; font-weight: bold; }
+
+        /* 資訊面板 */
+        .info-panel {
+            display: flex;
+            justify-content: space-between;
+            width: 90%;
+            margin-bottom: 20px;
+        }
+        .app-info {
+            width: 30%;
+            background: #2d2d2d;
+            border: 2px solid #555;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            position: relative;
+            transition: all 0.3s;
+        }
+        .app-a { border-color: #4caf50; }
+        .app-b { border-color: #2196f3; }
+        .app-c { border-color: #9c27b0; }
+        
+        .app-name { font-size: 18px; font-weight: bold; margin-bottom: 5px; }
+        .app-size { font-size: 14px; color: #aaa; margin-bottom: 10px; }
+        
+        .allocation-result {
+            font-size: 20px;
+            font-weight: bold;
+            color: #fff;
+            background: rgba(0,0,0,0.5);
+            padding: 5px 10px;
+            border-radius: 4px;
+            opacity: 0;
+            transform: scale(0.5);
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .allocation-result.show { opacity: 1; transform: scale(1); }
+
+        /* 實體記憶體 RAM */
+        .ram-container {
+            width: 90%;
+            border: 2px dashed #777;
+            border-radius: 8px;
+            padding: 20px;
+            background: rgba(255,255,255,0.02);
+            position: relative;
+        }
+        .ram-title {
+            position: absolute; top: -12px; left: 20px; background: #1e1e1e; padding: 0 10px; color: #aaa; font-weight: bold;
+        }
+        
+        .frames-grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 8px;
+        }
+        .frame {
+            height: 60px;
+            background: #252526;
+            border: 1px solid #444;
+            border-radius: 6px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 16px;
+            font-weight: bold;
+            color: transparent;
+            transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+            position: relative;
+            transform: scale(0.9);
+        }
+
+        /* 狀態分配 CSS */
+        .frame.g-a { border-color: #4caf50; background: linear-gradient(135deg, #4caf50, #2e7d32); color: white; transform: scale(1); }
+        .frame.g-b { border-color: #2196f3; background: linear-gradient(135deg, #2196f3, #1565c0); color: white; transform: scale(1); }
+        .frame.g-c { border-color: #9c27b0; background: linear-gradient(135deg, #9c27b0, #6a1b9a); color: white; transform: scale(1); }
+        
+        .desc-box {
+            width: 100%;
+            max-width: 860px;
+            background-color: #252526;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 5px solid #4db8ff;
+            font-size: 17px;
+            line-height: 1.6;
+            min-height: 100px;
+        }
+
+        .controls { margin-top: 25px; display: flex; gap: 15px; }
+        code { background: #000; padding: 2px 6px; border-radius: 4px; color: #ffeb3b; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1 id="title">頁框配置：比例分配 (Proportional Allocation)</h1>
+        <button onclick="toggleLang()" id="langBtn">Switch to English</button>
+    </div>
+
+    <div class="animation-container">
+        
+        <div class="math-panel" id="math-panel">
+            <span id="lbl-total-req">總需求量 (S)</span> = 2 + 3 + 10 = <span class="highlight-calc">15 頁框</span><br>
+            <div class="formula" id="lbl-formula">aᵢ = ( sᵢ / S ) × m</div>
+            <span id="lbl-m">可用實體記憶體 (m)</span> = <span class="highlight-calc">12 頁框</span>
+        </div>
+
+        <div class="info-panel">
+            <div class="app-info app-a" id="box-a">
+                <div class="app-name" style="color: #4caf50;" id="name-a">App A (小)</div>
+                <div class="app-size" id="size-a">s₁ = 2</div>
+                <div class="allocation-result" id="res-a">(2/15) × 12 ≈ 2</div>
+            </div>
+            <div class="app-info app-b" id="box-b">
+                <div class="app-name" style="color: #2196f3;" id="name-b">App B (中)</div>
+                <div class="app-size" id="size-b">s₂ = 3</div>
+                <div class="allocation-result" id="res-b">(3/15) × 12 ≈ 2</div>
+            </div>
+            <div class="app-info app-c" id="box-c">
+                <div class="app-name" style="color: #9c27b0;" id="name-c">App C (大)</div>
+                <div class="app-size" id="size-c">s₃ = 10</div>
+                <div class="allocation-result" id="res-c">(10/15) × 12 = 8</div>
+            </div>
+        </div>
+
+        <div class="ram-container">
+            <div class="ram-title" id="lbl-ram">實體記憶體 (m = 12 個頁框)</div>
+            <div class="frames-grid" id="f-grid">
+                </div>
+        </div>
+
+    </div>
+
+    <div class="desc-box" id="description">
+        請點擊「下一步」開始演繹比例分配的運作過程。
+    </div>
+
+    <div class="controls">
+        <button onclick="prevStep()" id="prevBtn" disabled>上一步</button>
+        <button onclick="nextStep()" id="nextBtn">下一步</button>
+    </div>
+
+    <script>
+        let currentLang = 'zh';
+        let currentStep = 0;
+        const totalSteps = 4;
+        
+        // 建立 12 個 Frames
+        const fGrid = document.getElementById('f-grid');
+        let frames = [];
+        for(let i=0; i<12; i++) {
+            let f = document.createElement('div');
+            f.className = 'frame';
+            fGrid.appendChild(f);
+            frames.push(f);
+        }
+
+        const mathPanel = document.getElementById('math-panel');
+        const resA = document.getElementById('res-a');
+        const resB = document.getElementById('res-b');
+        const resC = document.getElementById('res-c');
+        const boxA = document.getElementById('box-a');
+        const boxB = document.getElementById('box-b');
+        const boxC = document.getElementById('box-c');
+
+        const i18n = {
+            zh: {
+                title: "頁框配置：比例分配 (Proportional Allocation)",
+                langBtn: "Switch to English",
+                prevBtn: "上一步",
+                nextBtn: "下一步",
+                nameA: "App A (小)", nameB: "App B (中)", nameC: "App C (大)",
+                lblRam: "實體記憶體 (m = 12 個頁框)",
+                lblTotalReq: "總需求量 (S)", lblFormula: "aᵢ = ( sᵢ / S ) × m", lblM: "可用實體記憶體 (m)",
+                steps: [
+                    "<strong>初始狀態：</strong>系統總共有 <strong>12 個</strong>實體頁框可用。3 個應用程式準備執行，它們的需求大小差異巨大。",
+                    "<strong>步驟 1 (計算總需求)：</strong>作業系統不再盲目平分。它首先加總所有程式的記憶體需求量。<code>2 + 3 + 10 = 15</code>。系統知道目前處於「資源供不應求」的狀態 (需求 15，只有 12)。",
+                    "<strong>步驟 2 (依比例計算配額)：</strong>系統依據公式 <code>(自身大小 / 總大小) * 總頁框數</code> 分別計算。<br>App A: (2/15)*12 ≈ 2 頁<br>App B: (3/15)*12 = 2.4 ≈ 2 頁<br>App C: (10/15)*12 = 8 頁。",
+                    "<strong>步驟 3 (執行分配)：</strong>作業系統將 12 個頁框發放下去。請觀察結果！",
+                    "<strong>總結：</strong>App A 拿到 2 頁，完全滿足且不浪費。大程式 App C 拿到了 8 頁 (原本平均分配只能拿 4 頁)，獲得了龐大的運作空間。資源被精準地花在刀口上，這正是比例分配的價值所在。"
+                ]
+            },
+            en: {
+                title: "Frame Allocation: Proportional Allocation",
+                langBtn: "切換至中文",
+                prevBtn: "Previous",
+                nextBtn: "Next",
+                nameA: "App A (Small)", nameB: "App B (Med)", nameC: "App C (Large)",
+                lblRam: "Physical Memory (m = 12 Frames)",
+                lblTotalReq: "Total Demand (S)", lblFormula: "aᵢ = ( sᵢ / S ) × m", lblM: "Available Memory (m)",
+                steps: [
+                    "<strong>Initial State:</strong> The system has <strong>12</strong> physical frames available. 3 apps are ready to run, with vastly different memory demands.",
+                    "<strong>Step 1 (Calculate Total Demand):</strong> The OS doesn't just divide blindly. It sums up all memory needs: <code>2 + 3 + 10 = 15</code>. The OS knows resources are constrained (demand 15, supply 12).",
+                    "<strong>Step 2 (Calculate Proportional Share):</strong> The system uses the formula <code>(Own Size / Total Size) * Total Frames</code>.<br>App A: (2/15)*12 ≈ 2 frames<br>App B: (3/15)*12 = 2.4 ≈ 2 frames<br>App C: (10/15)*12 = 8 frames.",
+                    "<strong>Step 3 (Execute Allocation):</strong> The OS distributes the 12 frames. Watch the results!",
+                    "<strong>Summary:</strong> App A gets 2 frames (perfect fit, no waste). The large App C gets 8 frames (compared to 4 in equal allocation), giving it massive breathing room. Resources are placed exactly where needed most. This is the power of proportional allocation."
+                ]
+            }
+        };
+
+        function resetUI() {
+            frames.forEach(f => {
+                f.className = 'frame';
+                f.innerText = '';
+            });
+            mathPanel.style.opacity = 0;
+            resA.classList.remove('show');
+            resB.classList.remove('show');
+            resC.classList.remove('show');
+            boxA.style.transform = 'scale(1)';
+            boxB.style.transform = 'scale(1)';
+            boxC.style.transform = 'scale(1)';
+        }
+
+        function updateUI() {
+            // 文字切換
+            document.getElementById('title').innerText = i18n[currentLang].title;
+            document.getElementById('langBtn').innerText = i18n[currentLang].langBtn;
+            document.getElementById('prevBtn').innerText = i18n[currentLang].prevBtn;
+            document.getElementById('nextBtn').innerText = i18n[currentLang].nextBtn;
+            
+            document.getElementById('name-a').innerText = i18n[currentLang].nameA;
+            document.getElementById('name-b').innerText = i18n[currentLang].nameB;
+            document.getElementById('name-c').innerText = i18n[currentLang].nameC;
+            
+            document.getElementById('lbl-ram').innerText = i18n[currentLang].lblRam;
+            document.getElementById('lbl-total-req').innerText = i18n[currentLang].lblTotalReq;
+            document.getElementById('lbl-formula').innerText = i18n[currentLang].lblFormula;
+            document.getElementById('lbl-m').innerText = i18n[currentLang].lblM;
+
+            document.getElementById('description').innerHTML = i18n[currentLang].steps[currentStep];
+
+            document.getElementById('prevBtn').disabled = currentStep === 0;
+            document.getElementById('nextBtn').disabled = currentStep === totalSteps;
+
+            resetUI();
+
+            switch(currentStep) {
+                case 1:
+                    mathPanel.style.opacity = 1;
+                    break;
+                case 2:
+                    mathPanel.style.opacity = 1;
+                    resA.classList.add('show');
+                    resB.classList.add('show');
+                    resC.classList.add('show');
+                    break;
+                case 3:
+                case 4:
+                    mathPanel.style.opacity = 1;
+                    resA.classList.add('show');
+                    resB.classList.add('show');
+                    resC.classList.add('show');
+                    
+                    // 動態強調 Box 大小對應結果
+                    boxA.style.transform = 'scale(0.95)';
+                    boxC.style.transform = 'scale(1.05)';
+
+                    // App A: 2 頁
+                    for(let i=0; i<2; i++) { 
+                        setTimeout(() => { frames[i].classList.add('g-a'); frames[i].innerText = 'A'; }, i * 100); 
+                    }
+                    // App B: 2 頁
+                    for(let i=2; i<4; i++) { 
+                        setTimeout(() => { frames[i].classList.add('g-b'); frames[i].innerText = 'B'; }, i * 100); 
+                    }
+                    // App C: 8 頁
+                    for(let i=4; i<12; i++) { 
+                        setTimeout(() => { frames[i].classList.add('g-c'); frames[i].innerText = 'C'; }, i * 100); 
+                    }
+                    break;
+            }
+        }
+
+        function toggleLang() {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            updateUI();
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps) {
+                currentStep++;
+                updateUI();
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 0) {
+                currentStep--;
+                updateUI();
+            }
+        }
+
+        // 初始載入
+        updateUI();
+    </script>
+</body>
+</html>

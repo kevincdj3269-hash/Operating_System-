@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frame Allocation Animation</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 850px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        h1 { margin: 0; font-size: 24px; color: #4db8ff; }
+        
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background-color: #007acc;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            transition: background 0.2s, transform 0.1s;
+        }
+        button:hover { background-color: #005999; }
+        button:active { transform: scale(0.97); }
+        button:disabled { background-color: #444; color: #888; cursor: not-allowed; }
+
+        .animation-container {
+            width: 850px;
+            height: 400px;
+            background-color: #1e1e1e;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+            border: 1px solid #333;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding-top: 20px;
+            box-sizing: border-box;
+        }
+
+        /* 資訊看板 */
+        .info-panel {
+            display: flex;
+            gap: 40px;
+            margin-bottom: 30px;
+        }
+        .app-info {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 15px 30px;
+            border-radius: 8px;
+            background: #2d2d2d;
+            border: 2px solid #555;
+            transition: transform 0.3s;
+        }
+        .app-a { border-color: #f97316; }
+        .app-b { border-color: #8b5cf6; }
+        
+        .app-name { font-size: 20px; font-weight: bold; margin-bottom: 5px;}
+        .app-a .app-name { color: #f97316; }
+        .app-b .app-name { color: #8b5cf6; }
+        .app-size { font-size: 14px; color: #aaa; }
+
+        /* 實體記憶體 RAM (10 Frames) */
+        .ram-container {
+            width: 90%;
+            border: 2px dashed #4caf50;
+            border-radius: 8px;
+            padding: 15px;
+            background: rgba(76, 175, 80, 0.05);
+            position: relative;
+        }
+        .ram-title {
+            position: absolute;
+            top: -12px;
+            left: 20px;
+            background: #1e1e1e;
+            padding: 0 10px;
+            color: #4caf50;
+            font-weight: bold;
+        }
+        
+        .frames-grid {
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            gap: 10px;
+        }
+        .frame {
+            height: 80px;
+            background: #252526;
+            border: 1px solid #444;
+            border-radius: 6px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 18px;
+            font-weight: bold;
+            color: white;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        /* 狀態樣式 */
+        .frame.a-fill { background: linear-gradient(135deg, #f97316, #ea580c); border-color: #f97316; }
+        .frame.b-fill { background: linear-gradient(135deg, #8b5cf6, #7c3aed); border-color: #8b5cf6; }
+        .frame.waste::after { content: '⚠️ 浪費'; font-size: 10px; position: absolute; bottom: 5px; color: #fff; }
+        .frame.fault::after { content: '🔥 缺頁'; font-size: 10px; position: absolute; bottom: 5px; color: #fff; }
+        
+        .en .frame.waste::after { content: '⚠️ Waste'; }
+        .en .frame.fault::after { content: '🔥 Fault'; }
+
+        /* 標籤顯示 */
+        .allocation-label {
+            margin-top: 20px;
+            font-size: 22px;
+            font-weight: bold;
+            color: #ffeb3b;
+            height: 30px;
+        }
+
+        .desc-box {
+            width: 100%;
+            max-width: 810px;
+            background-color: #252526;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 5px solid #4db8ff;
+            font-size: 17px;
+            line-height: 1.6;
+            min-height: 100px;
+        }
+
+        .controls { margin-top: 25px; display: flex; gap: 15px; }
+        code { background: #000; padding: 2px 6px; border-radius: 4px; color: #ffeb3b; }
+    </style>
+</head>
+<body class="zh">
+
+    <div class="header">
+        <h1 id="title">頁框數量配置 (Frame Allocation)</h1>
+        <button onclick="toggleLang()" id="langBtn">Switch to English</button>
+    </div>
+
+    <div class="animation-container">
+        
+        <div class="info-panel">
+            <div class="app-info app-a">
+                <div class="app-name">App A (小程式)</div>
+                <div class="app-size" id="lbl-size-a">需求大小：2 頁</div>
+            </div>
+            <div class="app-info app-b">
+                <div class="app-name">App B (大程式)</div>
+                <div class="app-size" id="lbl-size-b">需求大小：8 頁</div>
+            </div>
+        </div>
+
+        <div class="ram-container">
+            <div class="ram-title" id="lbl-ram">實體記憶體 (總共 10 個頁框)</div>
+            <div class="frames-grid" id="f-grid">
+                </div>
+        </div>
+
+        <div class="allocation-label" id="alloc-lbl">等待配置...</div>
+
+    </div>
+
+    <div class="desc-box" id="description">
+        請點擊「下一步」開始演繹不同的記憶體分配演算法。
+    </div>
+
+    <div class="controls">
+        <button onclick="prevStep()" id="prevBtn" disabled>上一步</button>
+        <button onclick="nextStep()" id="nextBtn">下一步</button>
+    </div>
+
+    <script>
+        let currentLang = 'zh';
+        let currentStep = 0;
+        const totalSteps = 4;
+        
+        // 建立 10 個 Frames
+        const fGrid = document.getElementById('f-grid');
+        let frames = [];
+        for(let i=0; i<10; i++) {
+            let f = document.createElement('div');
+            f.className = 'frame';
+            fGrid.appendChild(f);
+            frames.push(f);
+        }
+
+        const allocLbl = document.getElementById('alloc-lbl');
+
+        const i18n = {
+            zh: {
+                title: "頁框數量配置 (Frame Allocation)",
+                langBtn: "Switch to English",
+                prevBtn: "上一步",
+                nextBtn: "下一步",
+                lblSizeA: "需求大小：2 頁",
+                lblSizeB: "需求大小：8 頁",
+                lblRam: "實體記憶體 (總共 10 個頁框)",
+                steps: [
+                    "<strong>初始狀態：</strong>系統有 10 個實體頁框可用。我們有兩個行程：<code>App A</code> 是一個只需要 2 頁的小程式（例如小算盤），而 <code>App B</code> 是一個需要 8 頁的大程式（例如 3D 遊戲）。總需求為 10 頁。",
+                    "<strong>第一種：平均分配 (Equal Allocation)</strong><br>作業系統不看程式大小，直接將 10 個頁框平均分給 2 個程式，每個程式獲得 <strong>5 個頁框</strong>。",
+                    "<strong>平均分配的災難：</strong><br><code>App A</code> 只需要 2 頁，卻拿到 5 頁，導致 3 個頁框<strong>被白白浪費</strong>。相反地，<code>App B</code> 需要 8 頁卻只拿到 5 頁，它在執行時會不斷發生<strong>缺頁錯誤 (Page Fault)</strong>，導致系統效能低落。",
+                    "<strong>第二種：比例分配 (Proportional Allocation)</strong><br>系統重新洗牌！這次依照公式 <code>(自身大小 / 總大小) * 總頁框數</code> 分配。<br>App A 獲得: <code>(2/10) * 10 = 2 頁框</code><br>App B 獲得: <code>(8/10) * 10 = 8 頁框</code>",
+                    "<strong>比例分配的完美結果：</strong><br>每個程式都獲得了完全符合其需求的頁框數量。沒有任何頁框被浪費，App B 也有足夠的空間可以順暢執行。這就是現代 OS 偏好依照比例分配或動態全域置換的原因！"
+                ],
+                labels: [
+                    "等待配置...",
+                    "演算法：平均分配 (Equal Allocation)",
+                    "分析：平均分配的效能瓶頸",
+                    "演算法：比例分配 (Proportional Allocation)",
+                    "分析：資源完美利用"
+                ]
+            },
+            en: {
+                title: "Frame Allocation Mechanisms",
+                langBtn: "切換至中文",
+                prevBtn: "Previous",
+                nextBtn: "Next",
+                lblSizeA: "Required Size: 2 Pages",
+                lblSizeB: "Required Size: 8 Pages",
+                lblRam: "Physical Memory (10 Frames Total)",
+                steps: [
+                    "<strong>Initial State:</strong> The system has 10 physical frames. We have two processes: <code>App A</code> is a small app needing 2 pages, and <code>App B</code> is a large app needing 8 pages. Total need is 10 pages.",
+                    "<strong>Method 1: Equal Allocation</strong><br>The OS ignores process sizes and divides the 10 frames equally among the 2 processes. Each process gets <strong>5 frames</strong>.",
+                    "<strong>The Disaster of Equal Allocation:</strong><br><code>App A</code> only needs 2 pages but gets 5, resulting in 3 frames <strong>completely wasted</strong>. Conversely, <code>App B</code> needs 8 but only gets 5, causing constant <strong>Page Faults</strong> and terrible performance.",
+                    "<strong>Method 2: Proportional Allocation</strong><br>System resets! Allocation is now based on the formula: <code>(Own Size / Total Size) * Total Frames</code>.<br>App A gets: <code>(2/10) * 10 = 2 Frames</code><br>App B gets: <code>(8/10) * 10 = 8 Frames</code>",
+                    "<strong>Perfect Proportional Result:</strong><br>Each app receives exactly the frames it needs. No frames are wasted, and App B has enough space to run smoothly. This is why modern OS prefer proportional or dynamic global replacement!"
+                ],
+                labels: [
+                    "Waiting for allocation...",
+                    "Algorithm: Equal Allocation",
+                    "Analysis: Bottlenecks of Equal Allocation",
+                    "Algorithm: Proportional Allocation",
+                    "Analysis: Perfect Resource Utilization"
+                ]
+            }
+        };
+
+        function resetFrames() {
+            frames.forEach(f => {
+                f.className = 'frame';
+                f.innerText = '';
+            });
+        }
+
+        function updateUI() {
+            document.body.className = currentLang; // 觸發 CSS 偽元素多國語系
+            
+            document.getElementById('title').innerText = i18n[currentLang].title;
+            document.getElementById('langBtn').innerText = i18n[currentLang].langBtn;
+            document.getElementById('prevBtn').innerText = i18n[currentLang].prevBtn;
+            document.getElementById('nextBtn').innerText = i18n[currentLang].nextBtn;
+            document.getElementById('lbl-size-a').innerText = i18n[currentLang].lblSizeA;
+            document.getElementById('lbl-size-b').innerText = i18n[currentLang].lblSizeB;
+            document.getElementById('lbl-ram').innerText = i18n[currentLang].lblRam;
+            
+            document.getElementById('description').innerHTML = i18n[currentLang].steps[currentStep];
+            allocLbl.innerHTML = i18n[currentLang].labels[currentStep];
+
+            document.getElementById('prevBtn').disabled = currentStep === 0;
+            document.getElementById('nextBtn').disabled = currentStep === totalSteps;
+
+            resetFrames();
+
+            switch(currentStep) {
+                case 0:
+                    // 全部空白
+                    break;
+                case 1:
+                    // Equal Allocation (5 vs 5)
+                    for(let i=0; i<5; i++) { frames[i].classList.add('a-fill'); frames[i].innerText = 'A'; }
+                    for(let i=5; i<10; i++) { frames[i].classList.add('b-fill'); frames[i].innerText = 'B'; }
+                    break;
+                case 2:
+                    // Equal Analysis (Show waste and fault)
+                    for(let i=0; i<2; i++) { frames[i].classList.add('a-fill'); frames[i].innerText = 'A'; }
+                    for(let i=2; i<5; i++) { frames[i].classList.add('a-fill', 'waste'); } // 浪費
+                    
+                    for(let i=5; i<10; i++) { frames[i].classList.add('b-fill'); frames[i].innerText = 'B'; }
+                    // App B 視覺上震動代表 fault
+                    for(let i=5; i<10; i++) { frames[i].classList.add('fault'); }
+                    break;
+                case 3:
+                case 4:
+                    // Proportional Allocation (2 vs 8)
+                    for(let i=0; i<2; i++) { frames[i].classList.add('a-fill'); frames[i].innerText = 'A'; }
+                    for(let i=2; i<10; i++) { frames[i].classList.add('b-fill'); frames[i].innerText = 'B'; }
+                    
+                    // 加上一點縮放動畫代表成功
+                    if(currentStep === 4) {
+                        allocLbl.style.color = '#4caf50';
+                        frames.forEach(f => {
+                            f.style.transform = 'scale(1.05)';
+                            setTimeout(()=> { f.style.transform = 'scale(1)'; }, 300);
+                        });
+                    } else {
+                        allocLbl.style.color = '#ffeb3b';
+                    }
+                    break;
+            }
+        }
+
+        function toggleLang() {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            updateUI();
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps) {
+                currentStep++;
+                updateUI();
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 0) {
+                currentStep--;
+                updateUI();
+            }
+        }
+
+        // 初始載入
+        updateUI();
+    </script>
+</body>
+</html>

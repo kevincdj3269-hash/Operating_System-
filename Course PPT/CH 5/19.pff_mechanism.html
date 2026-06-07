@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Page Fault Frequency (PFF) Animation</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 900px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        h1 { margin: 0; font-size: 24px; color: #4db8ff; }
+        
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background-color: #007acc;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            transition: background 0.2s, transform 0.1s;
+        }
+        button:hover { background-color: #005999; }
+        button:active { transform: scale(0.97); }
+        button:disabled { background-color: #444; color: #888; cursor: not-allowed; }
+
+        .animation-container {
+            width: 900px;
+            background-color: #1e1e1e;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+            border: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+            position: relative;
+        }
+
+        /* 監控面板佈局 */
+        .dashboard {
+            display: flex;
+            width: 100%;
+            justify-content: space-around;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        /* PFF 儀表板 (垂直計量條) */
+        .gauge-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #252526;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #444;
+            width: 250px;
+        }
+        .gauge-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #aaa;
+            margin-bottom: 15px;
+        }
+        
+        .meter {
+            position: relative;
+            width: 80px;
+            height: 250px;
+            background: #111;
+            border: 2px solid #555;
+            border-radius: 40px;
+            overflow: hidden;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.8);
+        }
+        
+        .meter-fill {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 20%; /* 動態調整 0-100% (最大值 10 faults/sec) */
+            background: #4caf50;
+            transition: height 0.6s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.4s;
+        }
+
+        /* 臨界值標線 */
+        .bound-line {
+            position: absolute;
+            left: -20px;
+            width: 120px;
+            height: 2px;
+            z-index: 10;
+        }
+        .upper-bound { bottom: 50%; border-bottom: 2px dashed #f44336; } /* 5 faults/sec */
+        .lower-bound { bottom: 10%; border-bottom: 2px dashed #03a9f4; } /* 1 fault/sec */
+        
+        .bound-label {
+            position: absolute;
+            right: -100px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .upper-label { top: -8px; color: #f44336; }
+        .lower-label { top: -8px; color: #03a9f4; }
+
+        .pff-value-display {
+            margin-top: 15px;
+            font-size: 28px;
+            font-weight: bold;
+            font-family: monospace;
+            transition: color 0.3s;
+        }
+
+        /* 記憶體頁框配置區 */
+        .memory-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #252526;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #444;
+            flex-grow: 1;
+            margin-left: 20px;
+            height: 250px;
+            justify-content: center;
+        }
+        
+        .mem-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #aaa;
+            margin-bottom: 20px;
+        }
+
+        .frames-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+            min-height: 80px;
+        }
+
+        .frame {
+            width: 60px;
+            height: 80px;
+            background: linear-gradient(135deg, #2196f3, #1565c0);
+            border: 2px solid #64b5f6;
+            border-radius: 8px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            animation: pop-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transition: transform 0.3s;
+        }
+
+        @keyframes pop-in {
+            0% { transform: scale(0); opacity: 0; }
+            80% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .desc-box {
+            width: 100%;
+            max-width: 860px;
+            background-color: #252526;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 5px solid #4db8ff;
+            font-size: 17px;
+            line-height: 1.6;
+            min-height: 110px;
+        }
+
+        .controls { margin-top: 25px; display: flex; gap: 15px; }
+        code { background: #000; padding: 2px 6px; border-radius: 4px; color: #ffeb3b; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1 id="title">分頁錯誤頻率 (Page Fault Frequency, PFF)</h1>
+        <button onclick="toggleLang()" id="langBtn">Switch to English</button>
+    </div>
+
+    <div class="animation-container">
+        
+        <div class="dashboard">
+            <div class="gauge-container">
+                <div class="gauge-title" id="lbl-gauge">目前的缺頁頻率 (PFF)</div>
+                <div class="meter">
+                    <div class="bound-line upper-bound">
+                        <div class="bound-label upper-label" id="lbl-upper">上限 (5次/秒)</div>
+                    </div>
+                    <div class="bound-line lower-bound">
+                        <div class="bound-label lower-label" id="lbl-lower">下限 (1次/秒)</div>
+                    </div>
+                    <div class="meter-fill" id="meter-fill"></div>
+                </div>
+                <div class="pff-value-display" id="pff-val">2 次/秒</div>
+            </div>
+
+            <div class="memory-container">
+                <div class="mem-title" id="lbl-mem">作業系統配置的實體頁框數量</div>
+                <div class="frames-row" id="frames-row">
+                    </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="desc-box" id="description">
+        請點擊「下一步」開始演繹 PFF 動態調節機制。
+    </div>
+
+    <div class="controls">
+        <button onclick="prevStep()" id="prevBtn" disabled>上一步</button>
+        <button onclick="nextStep()" id="nextBtn">下一步</button>
+    </div>
+
+    <script>
+        let currentLang = 'zh';
+        let currentStep = 0;
+        const totalSteps = 5;
+
+        // 定義狀態機
+        // pff 範圍: 0 ~ 10 (對應 0% ~ 100% 高度)
+        // 上限 5，下限 1
+        const timeline = [
+            { 
+                pff: 2, frames: 4, state: "normal",
+                zh: "<strong>初始狀態：</strong>作業系統持續監控程式。目前 PFF 為 2 次/秒，介於上限(5)與下限(1)之間。系統認為目前的 4 個頁框配置很完美，維持現狀。",
+                en: "<strong>Initial State:</strong> The OS monitors the program. Current PFF is 2 faults/sec, between the Upper Bound(5) and Lower Bound(1). The OS considers the current 4 frames optimal. No action taken." 
+            },
+            { 
+                pff: 8, frames: 4, state: "high",
+                zh: "<strong>步驟 1 (頻率飆高)：</strong>程式執行到需要大量資料的階段，缺頁錯誤飆升至 8 次/秒！<strong>超過上限 (Upper Bound)</strong>。系統判斷該程式有 Thrashing (輾轉) 的風險，急需更多記憶體。",
+                en: "<strong>Step 1 (Frequency Spikes):</strong> The program enters a data-heavy phase. PFF spikes to 8 faults/sec! <strong>Exceeds Upper Bound</strong>. The OS detects a Thrashing risk and realizes the program urgently needs more memory." 
+            },
+            { 
+                pff: 3, frames: 6, state: "normal",
+                zh: "<strong>步驟 2 (增加配置)：</strong>作業系統介入，額外分配 <strong>+2 個頁框</strong> 給該程式 (總數變為 6)。獲得充足空間後，程式的缺頁頻率順利降回安全的 3 次/秒。",
+                en: "<strong>Step 2 (Allocate Frames):</strong> The OS intervenes and allocates <strong>+2 frames</strong> (Total 6). With enough space, the program's page fault rate safely drops back to 3 faults/sec." 
+            },
+            { 
+                pff: 0, frames: 6, state: "low",
+                zh: "<strong>步驟 3 (頻率過低)：</strong>程式進入一個極小的迴圈，幾乎不發生缺頁 (PFF 降為 0)。<strong>低於下限 (Lower Bound)</strong>。系統判定分配給它的 6 個頁框太多了，嚴重浪費資源。",
+                en: "<strong>Step 3 (Frequency Drops):</strong> The program enters a tight loop, causing almost no faults (PFF drops to 0). <strong>Below Lower Bound</strong>. The OS determines the 6 assigned frames are too many and wasting resources." 
+            },
+            { 
+                pff: 2, frames: 4, state: "normal",
+                zh: "<strong>步驟 4 (收回配置)：</strong>作業系統剝奪了該程式的 <strong>-2 個頁框</strong>，將其釋放給其他更需要的程式。剝奪後 PFF 微幅上升至 2，依然在安全範圍內。系統資源達到最佳化利用！",
+                en: "<strong>Step 4 (Reclaim Frames):</strong> The OS reclaims <strong>-2 frames</strong> to free them for other programs. PFF slightly rises to 2, which is still safe. System resource utilization is now fully optimized!" 
+            }
+        ];
+
+        // UI 節點
+        const meterFill = document.getElementById('meter-fill');
+        const pffVal = document.getElementById('pff-val');
+        const framesRow = document.getElementById('frames-row');
+
+        const i18n = {
+            zh: {
+                title: "分頁錯誤頻率 (Page Fault Frequency, PFF)",
+                langBtn: "Switch to English",
+                prevBtn: "上一步",
+                nextBtn: "下一步",
+                lblGauge: "目前的缺頁頻率 (PFF)",
+                lblMem: "作業系統配置的實體頁框數量",
+                lblUpper: "上限 (5次/秒)",
+                lblLower: "下限 (1次/秒)",
+                unit: " 次/秒"
+            },
+            en: {
+                title: "Page Fault Frequency (PFF) Control",
+                langBtn: "切換至中文",
+                prevBtn: "Previous",
+                nextBtn: "Next",
+                lblGauge: "Current Page Fault Rate (PFF)",
+                lblMem: "Allocated Physical Frames by OS",
+                lblUpper: "Upper Bound (5 faults/s)",
+                lblLower: "Lower Bound (1 fault/s)",
+                unit: " / sec"
+            }
+        };
+
+        function updateUI() {
+            // 文字切換
+            document.getElementById('title').innerText = i18n[currentLang].title;
+            document.getElementById('langBtn').innerText = i18n[currentLang].langBtn;
+            document.getElementById('prevBtn').innerText = i18n[currentLang].prevBtn;
+            document.getElementById('nextBtn').innerText = i18n[currentLang].nextBtn;
+            
+            document.getElementById('lbl-gauge').innerText = i18n[currentLang].lblGauge;
+            document.getElementById('lbl-mem').innerText = i18n[currentLang].lblMem;
+            document.getElementById('lbl-upper').innerText = i18n[currentLang].lblUpper;
+            document.getElementById('lbl-lower').innerText = i18n[currentLang].lblLower;
+
+            const state = timeline[currentStep];
+            document.getElementById('description').innerHTML = currentLang === 'zh' ? state.zh : state.en;
+
+            document.getElementById('prevBtn').disabled = currentStep === 0;
+            document.getElementById('nextBtn').disabled = currentStep === totalSteps - 1;
+
+            // 更新 PFF 儀表板
+            const percentage = (state.pff / 10) * 100;
+            meterFill.style.height = `${percentage}%`;
+            pffVal.innerText = state.pff + i18n[currentLang].unit;
+
+            if (state.state === "high") {
+                meterFill.style.background = "#f44336"; // 紅色危險
+                pffVal.style.color = "#f44336";
+            } else if (state.state === "low") {
+                meterFill.style.background = "#03a9f4"; // 藍色偏低
+                pffVal.style.color = "#03a9f4";
+            } else {
+                meterFill.style.background = "#4caf50"; // 綠色正常
+                pffVal.style.color = "#4caf50";
+            }
+
+            // 更新頁框數量 (動畫顯示)
+            const currentFramesCount = framesRow.children.length;
+            const targetFramesCount = state.frames;
+
+            if (currentFramesCount < targetFramesCount) {
+                // 新增 Frames
+                for (let i = currentFramesCount; i < targetFramesCount; i++) {
+                    const frame = document.createElement('div');
+                    frame.className = 'frame';
+                    frame.innerText = 'F';
+                    framesRow.appendChild(frame);
+                }
+            } else if (currentFramesCount > targetFramesCount) {
+                // 移除 Frames
+                for (let i = currentFramesCount - 1; i >= targetFramesCount; i--) {
+                    const frame = framesRow.children[i];
+                    frame.style.transform = 'scale(0)';
+                    setTimeout(() => {
+                        if (framesRow.contains(frame)) {
+                            framesRow.removeChild(frame);
+                        }
+                    }, 300);
+                }
+            }
+        }
+
+        function toggleLang() {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            updateUI();
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps - 1) {
+                currentStep++;
+                updateUI();
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 0) {
+                currentStep--;
+                updateUI();
+            }
+        }
+
+        // 初始載入
+        // 清空容器確保乾淨生成
+        framesRow.innerHTML = '';
+        updateUI();
+    </script>
+</body>
+</html>

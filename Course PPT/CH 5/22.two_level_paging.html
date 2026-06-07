@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Two-Level Page Table Animation</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 950px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        h1 { margin: 0; font-size: 24px; color: #4db8ff; }
+        
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background-color: #007acc;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            transition: background 0.2s, transform 0.1s;
+        }
+        button:hover { background-color: #005999; }
+        button:active { transform: scale(0.97); }
+        button:disabled { background-color: #444; color: #888; cursor: not-allowed; }
+
+        .animation-container {
+            width: 950px;
+            height: 500px;
+            background-color: #1e1e1e;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+            border: 1px solid #333;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* 虛擬位址解析區塊 */
+        .va-container {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            display: flex; flex-direction: column; align-items: center;
+        }
+        .va-title { color: #ffeb3b; font-weight: bold; margin-bottom: 5px; }
+        .va-box { display: flex; border: 2px solid #555; border-radius: 8px; overflow: hidden; background: #252526; }
+        .va-part { padding: 10px 20px; font-family: monospace; font-size: 18px; border-right: 1px solid #555; text-align: center; transition: all 0.3s;}
+        .va-part:last-child { border-right: none; }
+        .va-part.active { background-color: rgba(255, 235, 59, 0.2); color: #ffeb3b; box-shadow: inset 0 0 10px #ffeb3b; }
+        .va-label { font-size: 12px; color: #aaa; margin-top: 2px; }
+
+        /* 硬體與表格結構 */
+        .hw-block { position: absolute; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; }
+        
+        .cr3 { top: 120px; left: 40px; width: 140px; height: 60px; background: #f44336; color: white; border: 2px solid #b71c1c; }
+        
+        .table-block { background: #252526; border: 2px dashed #888; padding: 10px; width: 160px; }
+        .table-title { font-size: 14px; margin-bottom: 10px; text-align: center; }
+        .table-entry { width: 100%; height: 30px; border: 1px solid #444; margin-bottom: 2px; display: flex; justify-content: center; align-items: center; font-family: monospace; font-size: 14px; color: #aaa; transition: all 0.3s; }
+        .table-entry.active { background: #007acc; color: white; border-color: #4db8ff; box-shadow: 0 0 10px #007acc; }
+
+        .dir-table { top: 220px; left: 160px; border-color: #9c27b0; }
+        .dir-table .table-title { color: #ce93d8; }
+
+        .page-table { top: 220px; left: 450px; border-color: #4caf50; }
+        .page-table .table-title { color: #81c784; }
+
+        .ram { top: 180px; left: 740px; width: 160px; height: 250px; background: rgba(76, 175, 80, 0.1); border: 2px dashed #4caf50; display: flex; flex-direction: column; align-items: center;}
+        .ram-target { width: 140px; height: 40px; background: #4caf50; color: white; margin-top: 130px; display: flex; justify-content: center; align-items: center; font-family: monospace; border-radius: 4px; opacity: 0; transition: opacity 0.5s;}
+
+        /* 動畫信號點 */
+        .signal-dot {
+            position: absolute; width: 16px; height: 16px; background: #ffeb3b; border-radius: 50%; box-shadow: 0 0 15px #ffeb3b; opacity: 0; z-index: 10;
+        }
+
+        .desc-box {
+            width: 100%;
+            max-width: 910px;
+            background-color: #252526;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 5px solid #007acc;
+            font-size: 17px;
+            line-height: 1.6;
+            min-height: 110px;
+        }
+
+        .controls { margin-top: 25px; display: flex; gap: 15px; }
+        code { background: #000; padding: 2px 6px; border-radius: 4px; color: #ffeb3b; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1 id="title">兩層式分頁表位址轉換</h1>
+        <button onclick="toggleLang()" id="langBtn">Switch to English</button>
+    </div>
+
+    <div class="animation-container">
+        
+        <div class="va-container">
+            <div class="va-title" id="lbl-va">虛擬位址 (Virtual Address): 32 bits</div>
+            <div class="va-box">
+                <div class="va-part" id="va-p1">
+                    <div>0000000001</div>
+                    <div class="va-label">p1 (10 bits)</div>
+                </div>
+                <div class="va-part" id="va-p2">
+                    <div>0000000010</div>
+                    <div class="va-label">p2 (10 bits)</div>
+                </div>
+                <div class="va-part" id="va-d">
+                    <div>000000001100</div>
+                    <div class="va-label">offset (12 bits)</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="hw-block cr3" id="hw-cr3">
+            <div id="lbl-cr3">CR3 暫存器</div>
+            <div style="font-size:12px; font-weight:normal;">(Base Address of Dir)</div>
+        </div>
+
+        <div class="hw-block table-block dir-table" id="hw-dir">
+            <div class="table-title" id="lbl-dir">第一層：分頁目錄<br>(Page Directory)</div>
+            <div class="table-entry">...</div>
+            <div class="table-entry" id="pde">Index 1: PT Base</div>
+            <div class="table-entry">...</div>
+            <div class="table-entry">...</div>
+        </div>
+
+        <div class="hw-block table-block page-table" id="hw-pt">
+            <div class="table-title" id="lbl-pt">第二層：分頁表<br>(Page Table)</div>
+            <div class="table-entry">...</div>
+            <div class="table-entry">...</div>
+            <div class="table-entry" id="pte">Index 2: Frame 5</div>
+            <div class="table-entry">...</div>
+        </div>
+
+        <div class="hw-block ram" id="hw-ram">
+            <div class="table-title" style="color: #4caf50;" id="lbl-ram">實體記憶體<br>(Physical RAM)</div>
+            <div class="ram-target" id="ram-target">Frame 5 + offset<br>Success!</div>
+        </div>
+
+        <div class="signal-dot" id="dot"></div>
+
+    </div>
+
+    <div class="desc-box" id="description">
+        請點擊「下一步」開始演繹位址轉換。
+    </div>
+
+    <div class="controls">
+        <button onclick="prevStep()" id="prevBtn" disabled>上一步</button>
+        <button onclick="nextStep()" id="nextBtn">下一步</button>
+    </div>
+
+    <script>
+        let currentLang = 'zh';
+        let currentStep = 0;
+        const totalSteps = 6;
+
+        // UI Nodes
+        const vaP1 = document.getElementById('va-p1');
+        const vaP2 = document.getElementById('va-p2');
+        const vaD = document.getElementById('va-d');
+        const pde = document.getElementById('pde');
+        const pte = document.getElementById('pte');
+        const ramTarget = document.getElementById('ram-target');
+        const dot = document.getElementById('dot');
+
+        const i18n = {
+            zh: {
+                title: "兩層式分頁表位址轉換",
+                langBtn: "Switch to English",
+                prevBtn: "上一步",
+                nextBtn: "下一步",
+                lblVa: "虛擬位址 (Virtual Address): 32 bits",
+                lblCr3: "CR3 暫存器",
+                lblDir: "第一層：分頁目錄<br>(Page Directory)",
+                lblPt: "第二層：分頁表<br>(Page Table)",
+                lblRam: "實體記憶體<br>(Physical RAM)",
+                ramHit: "Frame 5 + offset<br>存取成功！",
+                steps: [
+                    "<strong>初始狀態：</strong>CPU 發出一個 32 位元的虛擬位址。在兩層式架構下，這個位址會被硬體自動切割為三個部分：<code>p1</code> (10 bits), <code>p2</code> (10 bits), 與 <code>offset</code> (12 bits)。",
+                    "<strong>步驟 1 (解析 p1)：</strong>硬體首先提取虛擬位址的前 10 個位元 <code>p1</code>。在這個例子中，二進位 <code>0000000001</code> 代表索引值為 1。",
+                    "<strong>步驟 2 (查詢第一層目錄)：</strong>硬體讀取 <strong>CR3 暫存器</strong> (存放第一層目錄的實體基址)，加上 <code>p1</code> (Index 1)，找到了對應的目錄條目 (Page Directory Entry)。這個條目存放著「第二層分頁表」的起始位址。",
+                    "<strong>步驟 3 (解析 p2)：</strong>接著，硬體提取虛擬位址的中間 10 個位元 <code>p2</code>。二進位 <code>0000000010</code> 代表索引值為 2。",
+                    "<strong>步驟 4 (查詢第二層分頁表)：</strong>利用步驟 2 得到的第二層基址，加上 <code>p2</code> (Index 2)，找到了對應的分頁表條目 (Page Table Entry)。這個條目告訴我們：資料放在實體記憶體的 <strong>Frame 5</strong> 中。",
+                    "<strong>步驟 5 (物理存取)：</strong>最後，將 <strong>Frame 5</strong> 的實體位址與虛擬位址最後的 <code>offset</code> 結合，成功在實體記憶體 (RAM) 中找到確切的位元組資料！"
+                ]
+            },
+            en: {
+                title: "Two-Level Page Table Translation",
+                langBtn: "切換至中文",
+                prevBtn: "Previous",
+                nextBtn: "Next",
+                lblVa: "Virtual Address: 32 bits",
+                lblCr3: "CR3 Register",
+                lblDir: "Level 1: Page Directory",
+                lblPt: "Level 2: Page Table",
+                lblRam: "Physical RAM",
+                ramHit: "Frame 5 + offset<br>Success!",
+                steps: [
+                    "<strong>Initial State:</strong> CPU issues a 32-bit Virtual Address. In a 2-level schema, hardware automatically splits this address into three parts: <code>p1</code> (10 bits), <code>p2</code> (10 bits), and <code>offset</code> (12 bits).",
+                    "<strong>Step 1 (Extract p1):</strong> Hardware extracts the first 10 bits <code>p1</code>. In this example, binary <code>0000000001</code> means Index 1.",
+                    "<strong>Step 2 (Query Level 1):</strong> Hardware takes the <strong>CR3 Register</strong> (Base of Page Directory) and adds <code>p1</code> (Index 1) to locate the Page Directory Entry. This entry contains the base physical address of the Level 2 Page Table.",
+                    "<strong>Step 3 (Extract p2):</strong> Hardware extracts the middle 10 bits <code>p2</code>. Binary <code>0000000010</code> means Index 2.",
+                    "<strong>Step 4 (Query Level 2):</strong> Using the base address found in Step 2, hardware adds <code>p2</code> (Index 2) to locate the Page Table Entry. This entry reveals that the data resides in physical <strong>Frame 5</strong>.",
+                    "<strong>Step 5 (Physical Access):</strong> Finally, the physical address of <strong>Frame 5</strong> is combined with the <code>offset</code> bits to pinpoint the exact byte in Physical RAM. Access successful!"
+                ]
+            }
+        };
+
+        function resetUI() {
+            vaP1.classList.remove('active');
+            vaP2.classList.remove('active');
+            vaD.classList.remove('active');
+            pde.classList.remove('active');
+            pte.classList.remove('active');
+            ramTarget.style.opacity = 0;
+            dot.style.opacity = 0;
+            dot.style.transition = 'none';
+        }
+
+        function animateDot(startX, startY, endX, endY) {
+            dot.style.transition = 'none';
+            dot.style.left = startX + 'px';
+            dot.style.top = startY + 'px';
+            dot.style.opacity = 1;
+            
+            setTimeout(() => {
+                dot.style.transition = 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+                dot.style.left = endX + 'px';
+                dot.style.top = endY + 'px';
+            }, 50);
+        }
+
+        function updateUI() {
+            document.getElementById('title').innerText = i18n[currentLang].title;
+            document.getElementById('langBtn').innerText = i18n[currentLang].langBtn;
+            document.getElementById('prevBtn').innerText = i18n[currentLang].prevBtn;
+            document.getElementById('nextBtn').innerText = i18n[currentLang].nextBtn;
+            
+            document.getElementById('lbl-va').innerText = i18n[currentLang].lblVa;
+            document.getElementById('lbl-cr3').innerText = i18n[currentLang].lblCr3;
+            document.getElementById('lbl-dir').innerHTML = i18n[currentLang].lblDir;
+            document.getElementById('lbl-pt').innerHTML = i18n[currentLang].lblPt;
+            document.getElementById('lbl-ram').innerHTML = i18n[currentLang].lblRam;
+            ramTarget.innerHTML = i18n[currentLang].ramHit;
+
+            document.getElementById('description').innerHTML = i18n[currentLang].steps[currentStep];
+
+            document.getElementById('prevBtn').disabled = currentStep === 0;
+            document.getElementById('nextBtn').disabled = currentStep === totalSteps - 1;
+
+            resetUI();
+
+            switch(currentStep) {
+                case 1:
+                    vaP1.classList.add('active');
+                    break;
+                case 2:
+                    vaP1.classList.add('active');
+                    pde.classList.add('active');
+                    // Dot from p1 to CR3, then to PDE
+                    animateDot(400, 90, 240, 270);
+                    break;
+                case 3:
+                    pde.classList.add('active');
+                    vaP2.classList.add('active');
+                    break;
+                case 4:
+                    pde.classList.add('active');
+                    vaP2.classList.add('active');
+                    pte.classList.add('active');
+                    // Dot from PDE to PTE
+                    animateDot(320, 270, 530, 310);
+                    break;
+                case 5:
+                    vaD.classList.add('active');
+                    pde.classList.add('active');
+                    pte.classList.add('active');
+                    ramTarget.style.opacity = 1;
+                    // Dot from PTE & offset to RAM
+                    animateDot(610, 310, 810, 330);
+                    break;
+            }
+        }
+
+        function toggleLang() {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            updateUI();
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps - 1) {
+                currentStep++;
+                updateUI();
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 0) {
+                currentStep--;
+                updateUI();
+            }
+        }
+
+        // Initialize
+        updateUI();
+    </script>
+</body>
+</html>

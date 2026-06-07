@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Variable Allocation & Global Replacement</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 850px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        h1 { margin: 0; font-size: 24px; color: #4db8ff; }
+        
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background-color: #007acc;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            transition: background 0.2s, transform 0.1s;
+        }
+        button:hover { background-color: #005999; }
+        button:active { transform: scale(0.97); }
+        button:disabled { background-color: #444; color: #888; cursor: not-allowed; }
+
+        .animation-container {
+            width: 850px;
+            height: 450px;
+            background-color: #1e1e1e;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+            border: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+            position: relative;
+        }
+
+        /* 系統狀態與配額顯示 */
+        .status-panel {
+            display: flex;
+            justify-content: space-between;
+            width: 90%;
+            margin-bottom: 20px;
+            background: #252526;
+            padding: 15px 20px;
+            border-radius: 8px;
+            border: 1px solid #444;
+        }
+        .quota-box { display: flex; flex-direction: column; align-items: center; }
+        .quota-val { font-size: 28px; font-weight: bold; font-family: monospace; transition: color 0.3s; }
+        .quota-a .quota-val { color: #4caf50; }
+        .quota-b .quota-val { color: #9c27b0; }
+        
+        .sys-event { font-size: 18px; font-weight: bold; color: #ffeb3b; display: flex; align-items: center; justify-content: center; text-align: center; flex: 1; margin: 0 20px; }
+
+        /* 實體記憶體 RAM */
+        .ram-wrapper {
+            display: flex;
+            width: 90%;
+            padding: 20px;
+            border: 2px dashed #777;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.02);
+            position: relative;
+            justify-content: center;
+            gap: 15px;
+        }
+        .ram-title {
+            position: absolute; top: -12px; left: 20px; background: #1e1e1e; padding: 0 10px; color: #aaa; font-weight: bold;
+        }
+
+        /* 動態領域背景 */
+        .bg-region {
+            position: absolute;
+            top: 0; bottom: 0;
+            opacity: 0.1;
+            transition: all 0.5s ease-in-out;
+            z-index: 0;
+            border-radius: 6px;
+        }
+        .bg-a { left: 0; width: 50%; background: #4caf50; border-right: 2px dashed #4caf50; }
+        .bg-b { right: 0; width: 50%; background: #9c27b0; }
+
+        .frame {
+            width: 80px; height: 100px;
+            background: #252526; border: 2px solid #555; border-radius: 6px;
+            display: flex; justify-content: center; align-items: center;
+            position: relative; z-index: 2;
+        }
+
+        .page {
+            width: 70px; height: 90px; border-radius: 4px;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 24px; font-weight: bold; color: white;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+            transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        
+        .page-a { background: linear-gradient(135deg, #4caf50, #2e7d32); }
+        .page-b { background: linear-gradient(135deg, #9c27b0, #6a1b9a); }
+        
+        /* 動畫特效 */
+        .scan-effect { animation: scan 1s infinite alternate; }
+        @keyframes scan {
+            0% { box-shadow: 0 0 10px #ffeb3b, inset 0 0 10px #ffeb3b; border-color: #ffeb3b; }
+            100% { box-shadow: 0 0 30px #ffeb3b, inset 0 0 20px #ffeb3b; border-color: #fff; }
+        }
+
+        .desc-box {
+            width: 100%;
+            max-width: 810px;
+            background-color: #252526;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 5px solid #4caf50;
+            font-size: 17px;
+            line-height: 1.6;
+            min-height: 110px;
+        }
+
+        .controls { margin-top: 25px; display: flex; gap: 15px; }
+        code { background: #000; padding: 2px 6px; border-radius: 4px; color: #ffeb3b; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1 id="title">變動配置 + 全域置換 (Global Replacement)</h1>
+        <button onclick="toggleLang()" id="langBtn">Switch to English</button>
+    </div>
+
+    <div class="animation-container">
+        
+        <div class="status-panel">
+            <div class="quota-box quota-a">
+                <div style="color:#aaa; font-size:14px;" id="lbl-quota-a">App A 擁有頁框</div>
+                <div class="quota-val" id="val-a">3</div>
+            </div>
+            
+            <div class="sys-event" id="sys-event">系統就緒</div>
+            
+            <div class="quota-box quota-b">
+                <div style="color:#aaa; font-size:14px;" id="lbl-quota-b">App B 擁有頁框</div>
+                <div class="quota-val" id="val-b">3</div>
+            </div>
+        </div>
+
+        <div class="ram-wrapper">
+            <div class="ram-title" id="lbl-ram">全域實體記憶體 (Global RAM)</div>
+            
+            <div class="bg-region bg-a" id="bg-a"></div>
+            <div class="bg-region bg-b" id="bg-b"></div>
+
+            <div class="frame"><div class="page page-a" id="p0">A1</div></div>
+            <div class="frame"><div class="page page-a" id="p1">A2</div></div>
+            <div class="frame"><div class="page page-a" id="p2">A3</div></div>
+            
+            <div class="frame" id="f3"><div class="page page-b" id="p3">B1 (閒置)</div></div>
+            <div class="frame"><div class="page page-b" id="p4">B2</div></div>
+            <div class="frame"><div class="page page-b" id="p5">B3</div></div>
+        </div>
+
+    </div>
+
+    <div class="desc-box" id="description">
+        請點擊「下一步」開始演繹全域置換的過程。
+    </div>
+
+    <div class="controls">
+        <button onclick="prevStep()" id="prevBtn" disabled>上一步</button>
+        <button onclick="nextStep()" id="nextBtn">下一步</button>
+    </div>
+
+    <script>
+        let currentLang = 'zh';
+        let currentStep = 0;
+        const totalSteps = 5;
+
+        // UI 節點
+        const p3 = document.getElementById('p3');
+        const f3 = document.getElementById('f3');
+        const bgA = document.getElementById('bg-a');
+        const bgB = document.getElementById('bg-b');
+        const valA = document.getElementById('val-a');
+        const valB = document.getElementById('val-b');
+        const sysEvent = document.getElementById('sys-event');
+
+        const i18n = {
+            zh: {
+                title: "變動配置 + 全域置換 (Global Replacement)",
+                langBtn: "Switch to English",
+                prevBtn: "上一步",
+                nextBtn: "下一步",
+                lblQuotaA: "App A 擁有頁框",
+                lblQuotaB: "App B 擁有頁框",
+                lblRam: "全域實體記憶體 (Global RAM)",
+                events: [
+                    "系統就緒",
+                    "CPU 請求 A4，App A 發生缺頁！",
+                    "OS 掃描全域，尋找最閒置的頁框",
+                    "發現 App B 的 B1 閒置最久，將其踢出！",
+                    "App A 搶奪成功！配置比例發生變動"
+                ],
+                steps: [
+                    "<strong>初始狀態：</strong>系統採用「變動配置與全域置換」。目前實體記憶體共有 6 個頁框。App A 與 App B 各自佔用了 3 個頁框 (比例為 50% vs 50%)。背景顏色代表目前的資源劃分。",
+                    "<strong>步驟 1 (缺頁發生)：</strong>App A 正處於活躍期，CPU 請求讀取 <code>A4</code>。但是 App A 目前的 3 個頁框都滿了，發生缺頁錯誤！",
+                    "<strong>步驟 2 (全域掃描)：</strong>作業系統介入，啟動<strong>全域置換</strong>機制。它不再像區域置換那樣只看 App A 自己的頁框，而是將眼光掃向<strong>全部 6 個頁框</strong>，尋找一個「最久沒被使用 (LRU)」的受害者。",
+                    "<strong>步驟 3 (跨界搶奪)：</strong>作業系統發現，App B 的 <code>B1</code> 分頁已經閒置很久了 (可能 App B 正在休眠)。系統決定無情地將 <code>B1</code> 踢出，強行把這個頁框騰出來。",
+                    "<strong>步驟 4 (配置變動完成)：</strong>新的分頁 <code>A4</code> 被載入到原本屬於 App B 的頁框中。現在，App A 擁有了 <strong>4 個</strong>頁框，App B 只剩下 <strong>2 個</strong>。這就是所謂的<strong>變動配置</strong>！資源會根據程式的活躍程度動態流動。"
+                ]
+            },
+            en: {
+                title: "Variable Allocation & Global Replacement",
+                langBtn: "切換至中文",
+                prevBtn: "Previous",
+                nextBtn: "Next",
+                lblQuotaA: "App A Frames",
+                lblQuotaB: "App B Frames",
+                lblRam: "Global Physical Memory (Global RAM)",
+                events: [
+                    "System Ready",
+                    "CPU requests A4. App A Faults!",
+                    "OS scans globally for the most idle frame",
+                    "App B's 'B1' is the oldest idle page. Evicted!",
+                    "App A takes over! Allocation ratio changes."
+                ],
+                steps: [
+                    "<strong>Initial State:</strong> The system uses 'Variable Allocation & Global Replacement'. There are 6 frames. App A and App B currently occupy 3 frames each (50% vs 50%). Background colors show current resource division.",
+                    "<strong>Step 1 (Page Fault):</strong> App A is very active. CPU requests <code>A4</code>. However, App A's 3 frames are full. Page Fault!",
+                    "<strong>Step 2 (Global Scan):</strong> The OS intervenes with <strong>Global Replacement</strong>. Unlike Local Replacement, it doesn't just look at App A's frames. It scans <strong>ALL 6 frames</strong> to find the 'Least Recently Used' (LRU) victim.",
+                    "<strong>Step 3 (Cross-Boundary Steal):</strong> The OS finds that App B's <code>B1</code> has been idle for a long time (App B might be sleeping). The OS ruthlessly evicts <code>B1</code> to free the frame.",
+                    "<strong>Step 4 (Variable Allocation Complete):</strong> The new page <code>A4</code> is loaded into the frame. Now, App A owns <strong>4 frames</strong>, and App B is reduced to <strong>2 frames</strong>. This is <strong>Variable Allocation</strong>! Resources flow dynamically based on activity."
+                ]
+            }
+        };
+
+        function resetUI() {
+            f3.classList.remove('scan-effect');
+            sysEvent.style.color = '#ffeb3b';
+        }
+
+        function updateUI() {
+            document.getElementById('title').innerText = i18n[currentLang].title;
+            document.getElementById('langBtn').innerText = i18n[currentLang].langBtn;
+            document.getElementById('prevBtn').innerText = i18n[currentLang].prevBtn;
+            document.getElementById('nextBtn').innerText = i18n[currentLang].nextBtn;
+            
+            document.getElementById('lbl-quota-a').innerText = i18n[currentLang].lblQuotaA;
+            document.getElementById('lbl-quota-b').innerText = i18n[currentLang].lblQuotaB;
+            document.getElementById('lbl-ram').innerText = i18n[currentLang].lblRam;
+            
+            sysEvent.innerText = i18n[currentLang].events[currentStep];
+            document.getElementById('description').innerHTML = i18n[currentLang].steps[currentStep];
+
+            document.getElementById('prevBtn').disabled = currentStep === 0;
+            document.getElementById('nextBtn').disabled = currentStep === totalSteps - 1;
+
+            resetUI();
+
+            // 狀態機控制
+            switch(currentStep) {
+                case 0:
+                    valA.innerText = "3";
+                    valB.innerText = "3";
+                    bgA.style.width = "50%";
+                    bgB.style.width = "50%";
+                    
+                    p3.className = 'page page-b';
+                    p3.innerText = currentLang === 'zh' ? 'B1 (閒置)' : 'B1 (Idle)';
+                    p3.style.transform = 'scale(1)';
+                    break;
+                case 1:
+                    sysEvent.style.color = '#f44336';
+                    valA.innerText = "3"; valB.innerText = "3";
+                    bgA.style.width = "50%"; bgB.style.width = "50%";
+                    p3.className = 'page page-b';
+                    p3.innerText = currentLang === 'zh' ? 'B1 (閒置)' : 'B1 (Idle)';
+                    p3.style.transform = 'scale(1)';
+                    break;
+                case 2:
+                    f3.classList.add('scan-effect'); // 尋找獵物特效
+                    valA.innerText = "3"; valB.innerText = "3";
+                    bgA.style.width = "50%"; bgB.style.width = "50%";
+                    p3.className = 'page page-b';
+                    p3.innerText = currentLang === 'zh' ? 'B1 (閒置)' : 'B1 (Idle)';
+                    p3.style.transform = 'scale(1)';
+                    break;
+                case 3:
+                    f3.classList.add('scan-effect');
+                    sysEvent.style.color = '#f44336';
+                    
+                    // B1 縮小準備被踢
+                    p3.style.transform = 'scale(0)';
+                    setTimeout(() => { p3.innerText = ''; }, 300);
+                    
+                    valA.innerText = "3"; valB.innerText = "3";
+                    bgA.style.width = "50%"; bgB.style.width = "50%";
+                    break;
+                case 4:
+                    sysEvent.style.color = '#4caf50';
+                    
+                    // A4 進入
+                    p3.className = 'page page-a';
+                    p3.innerText = 'A4';
+                    p3.style.transform = 'scale(1)';
+                    
+                    // 變動配置：數字與背景推移
+                    valA.innerText = "4";
+                    valB.innerText = "2";
+                    bgA.style.width = "66.6%";
+                    bgB.style.width = "33.3%";
+                    
+                    valA.style.transform = 'scale(1.3)';
+                    valB.style.transform = 'scale(0.8)';
+                    setTimeout(() => { valA.style.transform = 'scale(1)'; valB.style.transform = 'scale(1)'; }, 300);
+                    break;
+            }
+        }
+
+        function toggleLang() {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            updateUI();
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps - 1) {
+                currentStep++;
+                updateUI();
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 0) {
+                currentStep--;
+                updateUI();
+            }
+        }
+
+        // 初始載入
+        updateUI();
+    </script>
+</body>
+</html>

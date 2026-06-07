@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pager vs Swapper Animation</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px;
+            margin: 0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 900px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        h1 { margin: 0; font-size: 26px; color: #4db8ff; }
+        
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background-color: #007acc;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+        button:hover { background-color: #005999; }
+        button:disabled { background-color: #444; color: #888; cursor: not-allowed; }
+
+        .animation-container {
+            position: relative;
+            width: 900px;
+            height: 450px;
+            background-color: #1e1e1e;
+            border-radius: 12px;
+            border: 1px solid #444;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            overflow: hidden;
+            margin-bottom: 25px;
+            display: flex;
+        }
+        
+        /* 儲存區域 */
+        .storage-area {
+            position: absolute;
+            width: 250px;
+            height: 380px;
+            top: 35px;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .disk { left: 50px; border: 2px dashed #9c27b0; background-color: rgba(156, 39, 176, 0.1); }
+        .ram { right: 50px; border: 2px dashed #4caf50; background-color: rgba(76, 175, 80, 0.1); }
+        
+        .area-title {
+            margin-top: -25px;
+            background-color: #1e1e1e;
+            padding: 0 10px;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        .disk-title { color: #ce93d8; }
+        .ram-title { color: #a5d6a7; }
+
+        /* 動畫物件 */
+        .anim-obj {
+            position: absolute;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            border-radius: 6px;
+            transition: top 1s ease-in-out, left 1s ease-in-out, opacity 0.5s;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            color: white;
+        }
+
+        /* Swapper 處理的大行程 */
+        .process-block {
+            width: 200px;
+            height: 120px;
+            background: linear-gradient(135deg, #e65100, #ff9800);
+            z-index: 2;
+        }
+
+        /* Pager 處理的小分頁 */
+        .page-block {
+            width: 90px;
+            height: 45px;
+            background: linear-gradient(135deg, #0277bd, #29b6f6);
+            z-index: 3;
+            font-size: 14px;
+        }
+
+        .desc-box {
+            width: 100%;
+            max-width: 860px;
+            background-color: #252526;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 5px solid #4db8ff;
+            font-size: 18px;
+            line-height: 1.6;
+            min-height: 80px;
+        }
+
+        .controls { margin-top: 25px; display: flex; gap: 15px; }
+
+        /* 標籤說明 */
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            left: 350px;
+            text-align: center;
+            color: #aaa;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1 id="title">分頁程式 vs 置換程式 運作演繹</h1>
+        <button onclick="toggleLang()" id="langBtn">Switch to English</button>
+    </div>
+
+    <div class="animation-container">
+        <div class="storage-area disk">
+            <div class="area-title disk-title" id="lbl-disk">硬碟 (Disk / Swap Space)</div>
+        </div>
+        <div class="storage-area ram">
+            <div class="area-title ram-title" id="lbl-ram">實體記憶體 (RAM)</div>
+        </div>
+
+        <div class="legend" id="lbl-legend">
+            大區塊 = 完整行程 (Process)<br>小區塊 = 單一分頁 (Page)
+        </div>
+
+        <div class="anim-obj process-block" id="processA">
+            Process A<br>(100 MB)
+        </div>
+
+        <div class="anim-obj page-block" id="page1">Page 1 (4KB)</div>
+        <div class="anim-obj page-block" id="page2">Page 2 (4KB)</div>
+        <div class="anim-obj page-block" id="page3">Page 3 (4KB)</div>
+    </div>
+
+    <div class="desc-box" id="description">
+        請點擊「下一步」開始演繹。
+    </div>
+
+    <div class="controls">
+        <button onclick="prevStep()" id="prevBtn" disabled>上一步</button>
+        <button onclick="nextStep()" id="nextBtn">下一步</button>
+    </div>
+
+    <script>
+        let currentLang = 'zh';
+        let currentStep = 0;
+        const totalSteps = 5;
+
+        // UI 節點
+        const pA = document.getElementById('processA');
+        const p1 = document.getElementById('page1');
+        const p2 = document.getElementById('page2');
+        const p3 = document.getElementById('page3');
+
+        const i18n = {
+            zh: {
+                title: "分頁程式 vs 置換程式 運作演繹",
+                langBtn: "Switch to English",
+                prevBtn: "上一步",
+                nextBtn: "下一步",
+                lblDisk: "硬碟 (Disk / Swap Space)",
+                lblRam: "實體記憶體 (RAM)",
+                lblLegend: "大區塊 = 完整行程 (Process)<br>小區塊 = 單一分頁 (Page)",
+                steps: [
+                    "<strong>初始狀態：</strong>實體記憶體 (RAM) 中目前載入了完整的 Process A。硬碟中則存放著尚未執行的 Process B (被切割為多個 4KB 的分頁)。",
+                    "<strong>步驟 1 (Swapper 置換程式)：</strong>系統需要大量連續記憶體。Swapper 介入，將<strong>「整個 Process A」</strong>從 RAM 完整移出到硬碟 (Swap Out)。這是一個非常耗時的 I/O 操作。",
+                    "<strong>步驟 2 (Pager 分頁程式)：</strong>Process B 開始執行。系統採用隨選分頁(Demand Paging)，發生缺頁中斷，Pager 僅將 CPU 目前需要的 <strong>Page 1</strong> 載入 RAM (Page In)。",
+                    "<strong>步驟 3 (Pager 分頁程式)：</strong>程式繼續執行，需要讀取新資料，Pager 再次介入，精準地將 <strong>Page 2</strong> 載入 RAM。此時 RAM 的空間利用率極高。",
+                    "<strong>步驟 4 (Swapper 置換程式)：</strong>系統資源恢復充足，排程器決定喚醒 Process A。Swapper 再次介入，將<strong>「整個 Process A」</strong>從硬碟完整搬回 RAM (Swap In)。",
+                    "<strong>總結：</strong>Swapper 處理宏觀的整個程式搬移 (高 I/O 成本)，而 Pager 處理微觀的按需分頁載入 (高效率)。現代 OS 主要依賴 Pager。"
+                ]
+            },
+            en: {
+                title: "Pager vs Swapper Animation",
+                langBtn: "切換至中文",
+                prevBtn: "Previous",
+                nextBtn: "Next",
+                lblDisk: "Disk (Swap Space)",
+                lblRam: "Physical Memory (RAM)",
+                lblLegend: "Large Block = Entire Process<br>Small Block = Single Page",
+                steps: [
+                    "<strong>Initial State:</strong> RAM currently holds the entire Process A. The Disk contains Process B, which is divided into multiple 4KB pages and hasn't started yet.",
+                    "<strong>Step 1 (Swapper):</strong> System needs large memory. The Swapper intervenes and moves the <strong>entire Process A</strong> from RAM to Disk (Swap Out). This is a heavy I/O operation.",
+                    "<strong>Step 2 (Pager):</strong> Process B starts executing via Demand Paging. A page fault occurs. The Pager only loads <strong>Page 1</strong> (which the CPU immediately needs) into RAM (Page In).",
+                    "<strong>Step 3 (Pager):</strong> Execution continues. New data is needed, so the Pager precisely loads <strong>Page 2</strong> into RAM. Memory is used highly efficiently.",
+                    "<strong>Step 4 (Swapper):</strong> System resources are freed up. The scheduler wakes Process A. The Swapper moves the <strong>entire Process A</strong> back to RAM (Swap In).",
+                    "<strong>Summary:</strong> Swapper handles macro-level entire process swapping (high I/O), while Pager handles micro-level on-demand page loading (efficient). Modern OS rely mostly on Pagers."
+                ]
+            }
+        };
+
+        function updateUI() {
+            // 文字更新
+            document.getElementById('title').innerText = i18n[currentLang].title;
+            document.getElementById('langBtn').innerText = i18n[currentLang].langBtn;
+            document.getElementById('prevBtn').innerText = i18n[currentLang].prevBtn;
+            document.getElementById('nextBtn').innerText = i18n[currentLang].nextBtn;
+            document.getElementById('lbl-disk').innerText = i18n[currentLang].lblDisk;
+            document.getElementById('lbl-ram').innerText = i18n[currentLang].lblRam;
+            document.getElementById('lbl-legend').innerHTML = i18n[currentLang].lblLegend;
+            document.getElementById('description').innerHTML = i18n[currentLang].steps[currentStep];
+
+            // 按鈕狀態
+            document.getElementById('prevBtn').disabled = currentStep === 0;
+            document.getElementById('nextBtn').disabled = currentStep === totalSteps;
+
+            // 動畫座標配置 (Left, Top)
+            // RAM 區域中心約為 X: 625, Disk 區域中心約為 X: 75
+            switch(currentStep) {
+                case 0: // 初始: Process A 在 RAM, Pages 在 Disk
+                    pA.style.left = '625px'; pA.style.top = '100px';
+                    p1.style.left = '75px';  p1.style.top = '250px';
+                    p2.style.left = '175px'; p2.style.top = '250px';
+                    p3.style.left = '125px'; p3.style.top = '320px';
+                    break;
+                case 1: // Swap Out: Process A 移至 Disk
+                    pA.style.left = '75px';  pA.style.top = '100px';
+                    p1.style.left = '75px';  p1.style.top = '250px';
+                    p2.style.left = '175px'; p2.style.top = '250px';
+                    p3.style.left = '125px'; p3.style.top = '320px';
+                    break;
+                case 2: // Page In (Page 1): Page 1 移至 RAM
+                    pA.style.left = '75px';  pA.style.top = '100px';
+                    p1.style.left = '625px'; p1.style.top = '250px';
+                    p2.style.left = '175px'; p2.style.top = '250px';
+                    p3.style.left = '125px'; p3.style.top = '320px';
+                    break;
+                case 3: // Page In (Page 2): Page 2 移至 RAM
+                    pA.style.left = '75px';  pA.style.top = '100px';
+                    p1.style.left = '625px'; p1.style.top = '250px';
+                    p2.style.left = '725px'; p2.style.top = '250px';
+                    p3.style.left = '125px'; p3.style.top = '320px';
+                    break;
+                case 4: // Swap In: Process A 移回 RAM (挪出空間)
+                case 5: // 總結畫面保持不變
+                    pA.style.left = '625px'; pA.style.top = '100px';
+                    p1.style.left = '625px'; p1.style.top = '250px';
+                    p2.style.left = '725px'; p2.style.top = '250px';
+                    p3.style.left = '125px'; p3.style.top = '320px';
+                    break;
+            }
+        }
+
+        function toggleLang() {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            updateUI();
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps) {
+                currentStep++;
+                updateUI();
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 0) {
+                currentStep--;
+                updateUI();
+            }
+        }
+
+        // 啟動初始化
+        updateUI();
+    </script>
+</body>
+</html>

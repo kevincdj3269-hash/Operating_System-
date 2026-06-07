@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thrashing Phenomenon Animation</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 900px;
+            border-bottom: 2px solid #334155;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        h1 { margin: 0; font-size: 24px; color: #f43f5e; }
+        
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background-color: #3b82f6;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            transition: background 0.2s, transform 0.1s;
+        }
+        button:hover { background-color: #2563eb; }
+        button:active { transform: scale(0.97); }
+        button:disabled { background-color: #475569; color: #94a3b8; cursor: not-allowed; }
+
+        .animation-container {
+            width: 900px;
+            height: 480px;
+            background-color: #1e293b;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+            border: 1px solid #334155;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        /* 系統儀表板 */
+        .dashboard {
+            display: flex;
+            justify-content: space-around;
+            background: #0f172a;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #334155;
+            margin-bottom: 30px;
+        }
+        .metric { display: flex; flex-direction: column; align-items: center; }
+        .metric-title { font-size: 14px; color: #94a3b8; margin-bottom: 5px; }
+        .metric-value { font-size: 28px; font-weight: bold; font-family: monospace; }
+        
+        .cpu-val { color: #10b981; transition: color 0.3s; }
+        .disk-val { color: #3b82f6; transition: color 0.3s; }
+        
+        .cpu-val.danger { color: #ef4444; }
+        .disk-val.danger { color: #ef4444; }
+
+        /* 硬體架構區 */
+        .hardware-area {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-grow: 1;
+            position: relative;
+        }
+        
+        .hardware-box {
+            width: 250px;
+            height: 250px;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding-top: 15px;
+            position: relative;
+        }
+        .ram-box { border: 3px dashed #10b981; background: rgba(16, 185, 129, 0.05); }
+        .disk-box { border: 3px dashed #8b5cf6; background: rgba(139, 92, 246, 0.05); }
+        
+        .box-title { font-weight: bold; font-size: 18px; margin-bottom: 15px; }
+        .ram-title { color: #34d399; }
+        .disk-title { color: #a78bfa; }
+
+        /* 行程與分頁 */
+        .process-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            width: 100%;
+            padding: 0 10px;
+        }
+        .page {
+            width: 40px; height: 40px; border-radius: 6px; display: flex; justify-content: center; align-items: center; font-weight: bold; color: white; opacity: 0; transition: all 0.5s;
+        }
+        .p1 { background: #3b82f6; } /* App 1 */
+        .p2 { background: #eab308; } /* App 2 */
+        .p3 { background: #ec4899; } /* App 3 */
+        .p4 { background: #f97316; } /* App 4 (Troublemaker) */
+
+        /* 輾轉現象的交換動畫 */
+        .io-channel {
+            position: absolute;
+            left: 280px; right: 280px; height: 100px; top: 100px;
+            display: flex; flex-direction: column; justify-content: space-around; align-items: center;
+        }
+        .arrow { width: 100%; height: 6px; background: #334155; position: relative; border-radius: 3px; overflow: hidden; }
+        .data-packet {
+            position: absolute; width: 40px; height: 100%; background: #fff; opacity: 0;
+        }
+        .flow-right .data-packet { left: -40px; }
+        .flow-left .data-packet { right: -40px; }
+
+        /* Thrashing 狂暴動畫 */
+        @keyframes swapRight { 0% { left: 0; opacity: 1; } 100% { left: 100%; opacity: 1; } }
+        @keyframes swapLeft { 0% { right: 0; opacity: 1; } 100% { right: 100%; opacity: 1; } }
+        
+        .thrashing-active .flow-right .data-packet { animation: swapRight 0.3s linear infinite; background: #ef4444; box-shadow: 0 0 15px #ef4444; }
+        .thrashing-active .flow-left .data-packet { animation: swapLeft 0.3s linear infinite; background: #ef4444; box-shadow: 0 0 15px #ef4444; }
+
+        /* OS Alert */
+        .os-alert {
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: #ef4444; color: white; padding: 10px 20px; border-radius: 8px; font-weight: bold; font-size: 18px; box-shadow: 0 5px 15px rgba(239, 68, 68, 0.5); opacity: 0; transition: opacity 0.3s; z-index: 10;
+        }
+
+        .desc-box {
+            width: 100%;
+            max-width: 860px;
+            background-color: #1e293b;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 6px solid #f43f5e;
+            font-size: 17px;
+            line-height: 1.6;
+            min-height: 110px;
+        }
+
+        .controls { margin-top: 25px; display: flex; gap: 15px; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1 id="title">輾轉現象 (Thrashing) 運作演繹</h1>
+        <button onclick="toggleLang()" id="langBtn">Switch to English</button>
+    </div>
+
+    <div class="animation-container" id="anim-box">
+        
+        <div class="os-alert" id="os-alert">⚠️ OS: CPU 閒置！載入更多程式！</div>
+
+        <div class="dashboard">
+            <div class="metric">
+                <div class="metric-title" id="lbl-cpu">CPU 使用率</div>
+                <div class="metric-value cpu-val" id="val-cpu">0%</div>
+            </div>
+            <div class="metric">
+                <div class="metric-title" id="lbl-ram-usage">實體記憶體佔用</div>
+                <div class="metric-value" id="val-ram" style="color: #10b981;">0 / 8 Pages</div>
+            </div>
+            <div class="metric">
+                <div class="metric-title" id="lbl-disk">磁碟 I/O 負載</div>
+                <div class="metric-value disk-val" id="val-disk">Idle</div>
+            </div>
+        </div>
+
+        <div class="hardware-area">
+            <div class="hardware-box ram-box">
+                <div class="box-title ram-title" id="lbl-ram">實體記憶體 (RAM)</div>
+                <div class="process-container" id="ram-content">
+                    </div>
+            </div>
+
+            <div class="io-channel">
+                <div style="color: #94a3b8; font-size:14px; font-weight:bold;" id="lbl-bus">分頁置換通道 (Paging)</div>
+                <div class="arrow flow-right"><div class="data-packet"></div></div>
+                <div class="arrow flow-left"><div class="data-packet"></div></div>
+            </div>
+
+            <div class="hardware-box disk-box">
+                <div class="box-title disk-title" id="lbl-disk-box">硬碟 (Swap Space)</div>
+                <div class="process-container" id="disk-content">
+                    </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="desc-box" id="description">
+        請點擊「下一步」開始演繹系統負載增加到崩潰的過程。
+    </div>
+
+    <div class="controls">
+        <button onclick="prevStep()" id="prevBtn" disabled>上一步</button>
+        <button onclick="nextStep()" id="nextBtn">下一步</button>
+    </div>
+
+    <script>
+        let currentLang = 'zh';
+        let currentStep = 0;
+        const totalSteps = 5;
+
+        // UI 節點
+        const valCpu = document.getElementById('val-cpu');
+        const valRam = document.getElementById('val-ram');
+        const valDisk = document.getElementById('val-disk');
+        const ramContent = document.getElementById('ram-content');
+        const diskContent = document.getElementById('disk-content');
+        const animBox = document.getElementById('anim-box');
+        const osAlert = document.getElementById('os-alert');
+
+        const i18n = {
+            zh: {
+                title: "輾轉現象 (Thrashing) 運作演繹",
+                langBtn: "Switch to English",
+                prevBtn: "上一步",
+                nextBtn: "下一步",
+                lblCpu: "CPU 使用率",
+                lblRamUsage: "實體記憶體佔用",
+                lblDisk: "磁碟 I/O 負載",
+                lblRamBox: "實體記憶體 (容量: 8 頁)",
+                lblDiskBox: "硬碟 (Swap Space)",
+                lblBus: "分頁置換通道 (Paging)",
+                alertOs: "⚠️ OS 排程器：CPU 太閒！強制載入新程式！",
+                steps: [
+                    "<strong>初始狀態：</strong>系統輕載。實體記憶體 (RAM) 有 8 個頁框。目前僅執行 <code>App 1</code> 與 <code>App 2</code>，記憶體充足，無須使用硬碟置換。",
+                    "<strong>步驟 1 (正常多工)：</strong>作業系統載入 <code>App 3</code> 以提高系統利用率。RAM 剛好滿載 (8/8)。此時 CPU 使用率達到完美的 <strong>95%</strong>，系統運作非常有效率。",
+                    "<strong>步驟 2 (記憶體過載)：</strong>程式繼續執行，需要更多記憶體空間。因為 RAM 已滿，系統開始進行正常的分頁置換 (Paging)，將不常用的分頁移至硬碟。因為硬碟速度慢，CPU 被迫等待，使用率降至 <strong>45%</strong>。",
+                    "<strong>步驟 3 (惡性循環起點)：</strong>作業系統的排程器發現 CPU 使用率竟然掉到了 45%。排程器產生致命誤判：「CPU 正在閒置，我必須提高多元度(Multiprogramming)！」於是，它強制將 <code>App 4</code> 載入記憶體。",
+                    "<strong>步驟 4 (Thrashing 爆發)：</strong>災難發生！新程式 <code>App 4</code> 搶奪已經不夠的記憶體。所有程式的「工作集」都無法完整放在 RAM 中。系統瘋狂發生缺頁，硬碟負載 100%，CPU 使用率跌至 <strong>5%</strong>。系統花在搬運資料的時間大於執行程式的時間，這就是<strong>輾轉現象</strong>！",
+                    "<strong>步驟 5 (如何解決)：</strong>要打破輾轉現象的解法是「降低多元度」。作業系統必須暫停 (Suspend) 幾個行程 (例如移除 App 3 & 4)，讓剩下的行程有足夠的記憶體空間執行。或是直接購買/增加實體記憶體。"
+                ]
+            },
+            en: {
+                title: "Thrashing Phenomenon Animation",
+                langBtn: "切換至中文",
+                prevBtn: "Previous",
+                nextBtn: "Next",
+                lblCpu: "CPU Utilization",
+                lblRamUsage: "Physical RAM Usage",
+                lblDisk: "Disk I/O Load",
+                lblRamBox: "Physical RAM (Cap: 8 Pages)",
+                lblDiskBox: "Hard Disk (Swap Space)",
+                lblBus: "Paging Channel",
+                alertOs: "⚠️ OS Scheduler: CPU idle! Loading new process!",
+                steps: [
+                    "<strong>Initial State:</strong> Light load. Physical RAM has 8 frames. Only <code>App 1</code> and <code>App 2</code> are running. Memory is sufficient, no swapping needed.",
+                    "<strong>Step 1 (Normal Multitasking):</strong> OS loads <code>App 3</code> to increase utilization. RAM is exactly full (8/8). CPU utilization reaches a perfect <strong>95%</strong>. The system is highly efficient.",
+                    "<strong>Step 2 (Memory Overcommit):</strong> Apps demand more memory. Since RAM is full, normal Paging begins, swapping pages to disk. Disk is slow, so CPU waits. Utilization drops to <strong>45%</strong>.",
+                    "<strong>Step 3 (The Vicious Cycle Begins):</strong> The OS scheduler notices CPU utilization dropped to 45%. It makes a fatal misjudgment: 'CPU is idle! I must increase the degree of multiprogramming!' It forces <code>App 4</code> into memory.",
+                    "<strong>Step 4 (Thrashing Erupts):</strong> Disaster! <code>App 4</code> fights for the already depleted memory. No app has its 'Working Set' in RAM. Insane page faults occur. Disk load is 100%, CPU drops to <strong>5%</strong>. The system spends more time paging than executing. This is <strong>Thrashing</strong>!",
+                    "<strong>Step 5 (Resolution):</strong> To stop Thrashing, we must decrease the degree of multiprogramming. The OS must suspend some processes (e.g., evict App 3 & 4) so the remaining ones have enough memory. Alternatively, install more physical RAM."
+                ]
+            }
+        };
+
+        // 頁面生成函數
+        function generatePages(p1, p2, p3, p4) {
+            let html = '';
+            for(let i=0; i<p1; i++) html += `<div class="page p1" style="opacity:1;">P1</div>`;
+            for(let i=0; i<p2; i++) html += `<div class="page p2" style="opacity:1;">P2</div>`;
+            for(let i=0; i<p3; i++) html += `<div class="page p3" style="opacity:1;">P3</div>`;
+            for(let i=0; i<p4; i++) html += `<div class="page p4" style="opacity:1;">P4</div>`;
+            return html;
+        }
+
+        function updateUI() {
+            // 文字切換
+            document.getElementById('title').innerText = i18n[currentLang].title;
+            document.getElementById('langBtn').innerText = i18n[currentLang].langBtn;
+            document.getElementById('prevBtn').innerText = i18n[currentLang].prevBtn;
+            document.getElementById('nextBtn').innerText = i18n[currentLang].nextBtn;
+            document.getElementById('lbl-cpu').innerText = i18n[currentLang].lblCpu;
+            document.getElementById('lbl-ram-usage').innerText = i18n[currentLang].lblRamUsage;
+            document.getElementById('lbl-disk').innerText = i18n[currentLang].lblDisk;
+            document.getElementById('lbl-ram').innerText = i18n[currentLang].lblRamBox;
+            document.getElementById('lbl-disk-box').innerText = i18n[currentLang].lblDiskBox;
+            document.getElementById('lbl-bus').innerText = i18n[currentLang].lblBus;
+            osAlert.innerText = i18n[currentLang].alertOs;
+            
+            document.getElementById('description').innerHTML = i18n[currentLang].steps[currentStep];
+
+            document.getElementById('prevBtn').disabled = currentStep === 0;
+            document.getElementById('nextBtn').disabled = currentStep === totalSteps;
+
+            // 重置樣式
+            valCpu.className = 'metric-value cpu-val';
+            valDisk.className = 'metric-value disk-val';
+            valRam.style.color = '#10b981';
+            animBox.classList.remove('thrashing-active');
+            osAlert.style.opacity = 0;
+
+            // 狀態機
+            switch(currentStep) {
+                case 0:
+                    valCpu.innerText = "60%";
+                    valRam.innerText = "5 / 8 Pages";
+                    valDisk.innerText = "Idle";
+                    ramContent.innerHTML = generatePages(3, 2, 0, 0);
+                    diskContent.innerHTML = "";
+                    break;
+                case 1: // Ideal Multiprogramming
+                    valCpu.innerText = "95%";
+                    valRam.innerText = "8 / 8 Pages";
+                    valDisk.innerText = "Low";
+                    ramContent.innerHTML = generatePages(3, 3, 2, 0);
+                    diskContent.innerHTML = "";
+                    break;
+                case 2: // Overcommit starts
+                    valCpu.innerText = "45%";
+                    valCpu.style.color = "#eab308";
+                    valRam.innerText = "8 / 8 Pages";
+                    valRam.style.color = "#eab308";
+                    valDisk.innerText = "High";
+                    valDisk.style.color = "#eab308";
+                    ramContent.innerHTML = generatePages(3, 2, 3, 0);
+                    diskContent.innerHTML = generatePages(1, 2, 0, 0); // Pushed to disk
+                    break;
+                case 3: // OS Misjudgment
+                    valCpu.innerText = "45%";
+                    valCpu.style.color = "#eab308";
+                    valRam.innerText = "8 / 8 Pages";
+                    valDisk.innerText = "High";
+                    ramContent.innerHTML = generatePages(3, 2, 3, 0);
+                    diskContent.innerHTML = generatePages(1, 2, 0, 0);
+                    osAlert.style.opacity = 1; // 顯示警告
+                    break;
+                case 4: // Thrashing
+                    valCpu.innerText = "5%";
+                    valCpu.className = 'metric-value cpu-val danger';
+                    valRam.innerText = "8 / 8 Pages";
+                    valRam.style.color = "#ef4444";
+                    valDisk.innerText = "100% OVERLOAD";
+                    valDisk.className = 'metric-value disk-val danger';
+                    ramContent.innerHTML = generatePages(2, 2, 2, 2);
+                    diskContent.innerHTML = generatePages(3, 3, 2, 2); // Huge disk queue
+                    animBox.classList.add('thrashing-active'); // 開啟狂暴交換動畫
+                    break;
+                case 5: // Resolution (Suspend apps)
+                    valCpu.innerText = "85%";
+                    valRam.innerText = "7 / 8 Pages";
+                    valDisk.innerText = "Low";
+                    ramContent.innerHTML = generatePages(4, 3, 0, 0); // Working sets restored
+                    diskContent.innerHTML = generatePages(0, 0, 4, 4); // App 3,4 suspended to disk
+                    break;
+            }
+        }
+
+        function toggleLang() {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            updateUI();
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps) {
+                currentStep++;
+                updateUI();
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 0) {
+                currentStep--;
+                updateUI();
+            }
+        }
+
+        // 初始載入
+        updateUI();
+    </script>
+</body>
+</html>

@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prepaging Animation</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 900px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        h1 { margin: 0; font-size: 24px; color: #4db8ff; }
+        
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background-color: #007acc;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            transition: background 0.2s, transform 0.1s;
+        }
+        button:hover { background-color: #005999; }
+        button:active { transform: scale(0.97); }
+        button:disabled { background-color: #444; color: #888; cursor: not-allowed; }
+
+        .animation-container {
+            width: 900px;
+            height: 480px;
+            background-color: #1e1e1e;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+            border: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+            position: relative;
+        }
+
+        /* 儀表板 */
+        .dashboard {
+            width: 95%;
+            display: flex;
+            justify-content: space-between;
+            background: #252526;
+            padding: 15px 20px;
+            border-radius: 8px;
+            border: 1px solid #444;
+            margin-bottom: 20px;
+        }
+        .stat-box { display: flex; flex-direction: column; align-items: center; }
+        .stat-val { font-size: 24px; font-weight: bold; font-family: monospace; color: #ffeb3b; }
+        .stat-val.alert { color: #f44336; }
+        .stat-val.good { color: #4caf50; }
+
+        /* 硬體架構區 */
+        .hardware-area {
+            display: flex;
+            justify-content: space-between;
+            width: 95%;
+            flex-grow: 1;
+            position: relative;
+        }
+        
+        .box {
+            width: 250px;
+            border-radius: 8px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+        }
+        .disk-box { border: 2px dashed #9c27b0; background: rgba(156, 39, 176, 0.05); }
+        .ram-box { border: 2px dashed #4caf50; background: rgba(76, 175, 80, 0.05); }
+        .cpu-box { border: 2px solid #f44336; background: rgba(244, 67, 54, 0.1); justify-content: center;}
+
+        .box-title { position: absolute; top: -12px; background: #1e1e1e; padding: 0 10px; font-weight: bold; font-size: 16px; }
+        .disk-box .box-title { color: #ce93d8; }
+        .ram-box .box-title { color: #81c784; }
+        .cpu-box .box-title { color: #e57373; }
+
+        .page-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 15px;
+            justify-content: center;
+        }
+
+        .page {
+            width: 60px; height: 80px; border-radius: 4px;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 20px; font-weight: bold; color: white;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+            transition: all 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+            position: absolute;
+        }
+        
+        /* 預設在硬碟中的位置 */
+        .page-app { background: linear-gradient(135deg, #0284c7, #0369a1); }
+        .p1 { left: 50px; top: 120px; }
+        .p2 { left: 120px; top: 120px; }
+        .p3 { left: 85px; top: 210px; }
+
+        /* 動畫特效 */
+        .highlight-ws {
+            box-shadow: 0 0 20px #ffeb3b, inset 0 0 10px #ffeb3b;
+            border: 2px solid #fff;
+            transform: scale(1.1);
+        }
+
+        .signal {
+            position: absolute; width: 15px; height: 15px; background: #ffeb3b; border-radius: 50%; box-shadow: 0 0 15px #ffeb3b; opacity: 0; z-index: 10;
+        }
+
+        .desc-box {
+            width: 100%;
+            max-width: 860px;
+            background-color: #252526;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 5px solid #007acc;
+            font-size: 17px;
+            line-height: 1.6;
+            min-height: 110px;
+        }
+
+        .controls { margin-top: 25px; display: flex; gap: 15px; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1 id="title">預先分頁 (Prepaging) 運作演繹</h1>
+        <button onclick="toggleLang()" id="langBtn">Switch to English</button>
+    </div>
+
+    <div class="animation-container">
+        
+        <div class="dashboard">
+            <div class="stat-box">
+                <div style="color:#aaa; font-size:14px;" id="lbl-status">系統狀態</div>
+                <div class="stat-val" id="val-status">Process Suspended</div>
+            </div>
+            <div class="stat-box">
+                <div style="color:#aaa; font-size:14px;" id="lbl-pf">累積缺頁錯誤 (Page Faults)</div>
+                <div class="stat-val" id="val-pf">0</div>
+            </div>
+        </div>
+
+        <div class="hardware-area">
+            <div class="box disk-box">
+                <div class="box-title" id="lbl-disk">硬碟 (Swap)</div>
+            </div>
+            
+            <div class="page page-app p1" id="page-1">P1</div>
+            <div class="page page-app p2" id="page-2">P2</div>
+            <div class="page page-app p3" id="page-3">P3</div>
+            
+            <div class="box ram-box">
+                <div class="box-title" id="lbl-ram">實體記憶體 (RAM)</div>
+            </div>
+
+            <div class="box cpu-box">
+                <div class="box-title" id="lbl-cpu">CPU 執行單元</div>
+                <div style="font-size:20px; font-weight:bold; color:#e57373;" id="cpu-task">IDLE</div>
+            </div>
+
+            <div class="signal" id="signal-dot"></div>
+        </div>
+    </div>
+
+    <div class="desc-box" id="description">
+        請點擊「下一步」開始演繹預先分頁。
+    </div>
+
+    <div class="controls">
+        <button onclick="prevStep()" id="prevBtn" disabled>上一步</button>
+        <button onclick="nextStep()" id="nextBtn">下一步</button>
+    </div>
+
+    <script>
+        let currentLang = 'zh';
+        let currentStep = 0;
+        const totalSteps = 5;
+
+        // UI 節點
+        const p1 = document.getElementById('page-1');
+        const p2 = document.getElementById('page-2');
+        const p3 = document.getElementById('page-3');
+        const valStatus = document.getElementById('val-status');
+        const valPf = document.getElementById('val-pf');
+        const cpuTask = document.getElementById('cpu-task');
+        const dot = document.getElementById('signal-dot');
+
+        const i18n = {
+            zh: {
+                title: "預先分頁 (Prepaging) 運作演繹",
+                langBtn: "Switch to English",
+                prevBtn: "上一步",
+                nextBtn: "下一步",
+                lblStatus: "行程狀態", lblPf: "初始缺頁錯誤 (Page Faults)",
+                lblDisk: "硬碟 (Swap)", lblRam: "實體記憶體 (RAM)", lblCpu: "CPU 執行單元",
+                statusSuspend: "休眠中 (Suspended)", statusResume: "準備喚醒 (Resuming)", statusRun: "執行中 (Running)",
+                steps: [
+                    "<strong>初始狀態：</strong>行程目前處於休眠狀態 (Swapped Out)。它的所有分頁 (P1, P2, P3) 都被存放在硬碟中，實體記憶體沒有它的資料。",
+                    "<strong>步驟 1 (分析工作集)：</strong>排程器決定喚醒該行程。作業系統查看該行程過去的紀錄，得知其「工作集合 (Working Set)」包含 P1, P2, P3。作業系統決定啟動<strong>預先分頁</strong>。",
+                    "<strong>步驟 2 (批次載入)：</strong>在 CPU 開始執行該行程的第一行程式碼之前，作業系統發出一次大型的 I/O 請求，將 P1, P2, P3 <strong>一次性全部載入</strong>實體記憶體中。",
+                    "<strong>步驟 3 (極速執行)：</strong>CPU 開始執行行程，並依序存取 P1, P2, P3。因為資料已經提前準備好，全部發生 <strong>Page Hit (命中)</strong>！缺頁錯誤保持為 0。",
+                    "<strong>對比總結：</strong>如果是傳統的「隨選分頁 (Demand Paging)」，CPU 執行時會連續遭遇 3 次漫長的 Page Fault。預先分頁成功消除了這段效能陣痛期！"
+                ]
+            },
+            en: {
+                title: "Prepaging Mechanism Animation",
+                langBtn: "切換至中文",
+                prevBtn: "Previous",
+                nextBtn: "Next",
+                lblStatus: "Process Status", lblPf: "Initial Page Faults",
+                lblDisk: "Hard Disk (Swap)", lblRam: "Physical Memory (RAM)", lblCpu: "CPU Unit",
+                statusSuspend: "Suspended", statusResume: "Resuming", statusRun: "Running",
+                steps: [
+                    "<strong>Initial State:</strong> The process is currently Swapped Out. All its pages (P1, P2, P3) reside on the disk. RAM is empty of its data.",
+                    "<strong>Step 1 (Analyze Working Set):</strong> The scheduler decides to resume the process. The OS looks at its history and identifies its Working Set (P1, P2, P3). The OS decides to use <strong>Prepaging</strong>.",
+                    "<strong>Step 2 (Bulk Load):</strong> Before the CPU executes the first instruction, the OS issues a bulk I/O request to load P1, P2, and P3 into RAM <strong>simultaneously</strong>.",
+                    "<strong>Step 3 (Fast Execution):</strong> CPU starts executing and requests P1, P2, P3. Since the data is already prepared, it results in pure <strong>Page Hits</strong>! Page Faults remain at 0.",
+                    "<strong>Summary:</strong> If this were 'Demand Paging', the CPU would have suffered 3 slow Page Faults initially. Prepaging successfully eliminates this performance penalty phase!"
+                ]
+            }
+        };
+
+        function resetPages() {
+            p1.style.left = '50px'; p1.style.top = '120px';
+            p2.style.left = '120px'; p2.style.top = '120px';
+            p3.style.left = '85px'; p3.style.top = '210px';
+            [p1, p2, p3].forEach(p => p.classList.remove('highlight-ws'));
+        }
+
+        function triggerSignal(delay, callback) {
+            setTimeout(() => {
+                dot.style.transition = 'none';
+                dot.style.left = '650px'; // CPU
+                dot.style.top = '150px';
+                dot.style.opacity = '1';
+                
+                setTimeout(() => {
+                    dot.style.transition = 'all 0.4s ease-out';
+                    dot.style.left = '420px'; // RAM center roughly
+                }, 50);
+
+                setTimeout(() => { 
+                    dot.style.opacity = '0'; 
+                    if(callback) callback();
+                }, 450);
+            }, delay);
+        }
+
+        function updateUI() {
+            document.getElementById('title').innerText = i18n[currentLang].title;
+            document.getElementById('langBtn').innerText = i18n[currentLang].langBtn;
+            document.getElementById('prevBtn').innerText = i18n[currentLang].prevBtn;
+            document.getElementById('nextBtn').innerText = i18n[currentLang].nextBtn;
+            
+            document.getElementById('lbl-status').innerText = i18n[currentLang].lblStatus;
+            document.getElementById('lbl-pf').innerText = i18n[currentLang].lblPf;
+            document.getElementById('lbl-disk').innerText = i18n[currentLang].lblDisk;
+            document.getElementById('lbl-ram').innerText = i18n[currentLang].lblRam;
+            document.getElementById('lbl-cpu').innerText = i18n[currentLang].lblCpu;
+
+            document.getElementById('description').innerHTML = i18n[currentLang].steps[currentStep];
+
+            document.getElementById('prevBtn').disabled = currentStep === 0;
+            document.getElementById('nextBtn').disabled = currentStep === totalSteps - 1;
+
+            switch(currentStep) {
+                case 0:
+                    resetPages();
+                    valStatus.innerText = currentLang === 'zh' ? i18n.zh.statusSuspend : i18n.en.statusSuspend;
+                    valStatus.className = 'stat-val';
+                    valPf.innerText = "0";
+                    cpuTask.innerText = "IDLE";
+                    break;
+                case 1: // Highlight WS
+                    resetPages();
+                    [p1, p2, p3].forEach(p => p.classList.add('highlight-ws'));
+                    valStatus.innerText = currentLang === 'zh' ? i18n.zh.statusResume : i18n.en.statusResume;
+                    valStatus.className = 'stat-val alert';
+                    break;
+                case 2: // Move to RAM
+                    [p1, p2, p3].forEach(p => p.classList.remove('highlight-ws'));
+                    // Move to RAM Box coordinates
+                    p1.style.left = '330px'; p1.style.top = '120px';
+                    p2.style.left = '400px'; p2.style.top = '120px';
+                    p3.style.left = '470px'; p3.style.top = '120px';
+                    valStatus.innerText = currentLang === 'zh' ? i18n.zh.statusResume : i18n.en.statusResume;
+                    break;
+                case 3: // CPU Execution (Hits)
+                case 4: // Summary
+                    p1.style.left = '330px'; p1.style.top = '120px';
+                    p2.style.left = '400px'; p2.style.top = '120px';
+                    p3.style.left = '470px'; p3.style.top = '120px';
+                    
+                    valStatus.innerText = currentLang === 'zh' ? i18n.zh.statusRun : i18n.en.statusRun;
+                    valStatus.className = 'stat-val good';
+                    valPf.innerText = "0";
+                    valPf.className = 'stat-val good';
+                    
+                    if(currentStep === 3) { // 播放動畫
+                        cpuTask.innerText = "Request P1";
+                        triggerSignal(0, () => {
+                            p1.style.transform = 'scale(1.2)'; setTimeout(()=>p1.style.transform='scale(1)', 300);
+                            cpuTask.innerText = "Request P2";
+                            triggerSignal(500, () => {
+                                p2.style.transform = 'scale(1.2)'; setTimeout(()=>p2.style.transform='scale(1)', 300);
+                                cpuTask.innerText = "Request P3";
+                                triggerSignal(500, () => {
+                                    p3.style.transform = 'scale(1.2)'; setTimeout(()=>p3.style.transform='scale(1)', 300);
+                                    cpuTask.innerText = "ALL HITS!";
+                                    cpuTask.style.color = "#4caf50";
+                                });
+                            });
+                        });
+                    }
+                    break;
+            }
+        }
+
+        function toggleLang() {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            updateUI();
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps - 1) {
+                currentStep++;
+                updateUI();
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 0) {
+                currentStep--;
+                updateUI();
+            }
+        }
+
+        // 初始載入
+        updateUI();
+    </script>
+</body>
+</html>

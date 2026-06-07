@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aging Algorithm (LRU Approximation)</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 850px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        h1 { margin: 0; font-size: 24px; color: #4db8ff; }
+        
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background-color: #007acc;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            transition: background 0.2s, transform 0.1s;
+        }
+        button:hover { background-color: #005999; }
+        button:active { transform: scale(0.97); }
+        button:disabled { background-color: #444; color: #888; cursor: not-allowed; }
+
+        .animation-container {
+            width: 850px;
+            background-color: #1e1e1e;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+            border: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            padding: 30px;
+            box-sizing: border-box;
+        }
+
+        .table-header {
+            display: grid;
+            grid-template-columns: 100px 100px 350px 150px;
+            gap: 15px;
+            font-weight: bold;
+            color: #aaa;
+            margin-bottom: 15px;
+            border-bottom: 1px dashed #555;
+            padding-bottom: 10px;
+            align-items: center;
+        }
+
+        .page-row {
+            display: grid;
+            grid-template-columns: 100px 100px 350px 150px;
+            gap: 15px;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #252526;
+            border-radius: 8px;
+            border: 1px solid #333;
+            transition: all 0.3s;
+        }
+
+        .page-row.victim {
+            background: rgba(244, 67, 54, 0.1);
+            border-color: #f44336;
+            box-shadow: 0 0 15px rgba(244, 67, 54, 0.3);
+        }
+
+        .page-name { font-size: 20px; font-weight: bold; color: #fff; }
+        
+        .r-bit {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 20px;
+            font-weight: bold;
+            border-radius: 6px;
+            background-color: #333;
+            border: 2px solid #555;
+            transition: all 0.3s;
+        }
+        .r-bit.active { background-color: #ffeb3b; color: #000; border-color: #fbc02d; box-shadow: 0 0 10px #ffeb3b; }
+
+        .shift-register {
+            display: flex;
+            gap: 4px;
+        }
+        
+        .bit {
+            width: 35px;
+            height: 45px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: monospace;
+            font-size: 22px;
+            background-color: #111;
+            border: 1px solid #444;
+            border-radius: 4px;
+            color: #666;
+            transition: all 0.4s ease-in-out;
+        }
+        .bit.one { background-color: #4caf50; color: #fff; border-color: #81c784; box-shadow: 0 0 8px rgba(76, 175, 80, 0.5); }
+        .bit.highlight { border-color: #ffeb3b; box-shadow: 0 0 12px #ffeb3b; transform: scale(1.1); z-index: 2;}
+
+        .dec-value {
+            font-family: monospace;
+            font-size: 24px;
+            color: #4db8ff;
+            font-weight: bold;
+        }
+
+        .desc-box {
+            width: 100%;
+            max-width: 810px;
+            background-color: #252526;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 5px solid #ffeb3b;
+            font-size: 17px;
+            line-height: 1.6;
+            min-height: 100px;
+        }
+
+        .controls { margin-top: 25px; display: flex; gap: 15px; }
+        code { background: #000; padding: 2px 6px; border-radius: 4px; color: #ffeb3b; }
+        
+        .arrow-indicator { font-size: 24px; color: #ffeb3b; margin: 0 10px; opacity: 0; transition: opacity 0.3s; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1 id="title">老化演算法 (Aging Algorithm) 運作演繹</h1>
+        <button onclick="toggleLang()" id="langBtn">Switch to English</button>
+    </div>
+
+    <div class="animation-container">
+        <div class="table-header">
+            <div id="hdr-page">分頁 (Page)</div>
+            <div id="hdr-rbit">R 位元<br>(硬體)</div>
+            <div id="hdr-reg">8位元暫存器 (OS 軟體)<br><span style="font-size:12px;">← MSB (最新) | LSB (最舊) →</span></div>
+            <div id="hdr-val">十進制整數值</div>
+        </div>
+
+        <div class="page-row" id="row-A">
+            <div class="page-name">Page A</div>
+            <div class="r-bit" id="r-A">0</div>
+            <div class="shift-register" id="reg-A"></div>
+            <div class="dec-value" id="val-A">0</div>
+        </div>
+        
+        <div class="page-row" id="row-B">
+            <div class="page-name">Page B</div>
+            <div class="r-bit" id="r-B">0</div>
+            <div class="shift-register" id="reg-B"></div>
+            <div class="dec-value" id="val-B">0</div>
+        </div>
+
+        <div class="page-row" id="row-C">
+            <div class="page-name">Page C</div>
+            <div class="r-bit" id="r-C">0</div>
+            <div class="shift-register" id="reg-C"></div>
+            <div class="dec-value" id="val-C">0</div>
+        </div>
+    </div>
+
+    <div class="desc-box" id="description">
+        請點擊「下一步」開始演繹老化演算法的位元推移。
+    </div>
+
+    <div class="controls">
+        <button onclick="prevStep()" id="prevBtn" disabled>上一步</button>
+        <button onclick="nextStep()" id="nextBtn">下一步</button>
+    </div>
+
+    <script>
+        let currentLang = 'zh';
+        let currentStep = 0;
+        const totalSteps = 5;
+
+        // 定義每一步的狀態
+        // r: Reference bit
+        // reg: 8-bit register string
+        // highlightMSB: boolean (是否強調 MSB 的寫入)
+        // victim: 哪一個被踢出
+        const timeline = [
+            { 
+              state: { A: {r:0, reg:'00000000'}, B: {r:0, reg:'00000000'}, C: {r:0, reg:'00000000'} },
+              victim: null, highlightMSB: false,
+              zh: "<strong>初始狀態：</strong>3 個分頁的 R-bit 均為 0，且作業系統維護的 8 位元暫存器初始值也都是 <code>00000000</code> (值為 0)。", 
+              en: "<strong>Initial State:</strong> R-bits for all 3 pages are 0. The OS-maintained 8-bit registers are initialized to <code>00000000</code> (value 0)." 
+            },
+            
+            { 
+              state: { A: {r:1, reg:'00000000'}, B: {r:0, reg:'00000000'}, C: {r:1, reg:'00000000'} },
+              victim: null, highlightMSB: false,
+              zh: "<strong>步驟 1 (硬體運作)：</strong>CPU 執行程式，存取了 <code>Page A</code> 與 <code>Page C</code>。硬體 MMU 自動將它們的 <strong>R 位元設為 1</strong>。此階段 OS 暫存器還沒變動。", 
+              en: "<strong>Step 1 (Hardware):</strong> CPU executes program, accessing <code>Page A</code> and <code>Page C</code>. Hardware MMU automatically sets their <strong>R-bits to 1</strong>. OS registers remain unchanged." 
+            },
+            
+            { 
+              state: { A: {r:0, reg:'10000000'}, B: {r:0, reg:'00000000'}, C: {r:0, reg:'10000000'} },
+              victim: null, highlightMSB: true,
+              zh: "<strong>步驟 2 (OS 時鐘中斷 Tick)：</strong>作業系統介入！它將所有暫存器<strong>向右平移 1 位元</strong>，並將剛剛的 <strong>R 位元塞入最左側 (MSB)</strong>。最後把 R 位元清零。現在 A 和 C 的值變成了 128。", 
+              en: "<strong>Step 2 (OS Clock Tick):</strong> OS intercepts! It <strong>shifts all registers right by 1 bit</strong>, inserts the <strong>R-bit into the Most Significant Bit (MSB, left)</strong>, and clears the R-bits. A and C now hold value 128." 
+            },
+            
+            { 
+              state: { A: {r:1, reg:'10000000'}, B: {r:1, reg:'00000000'}, C: {r:0, reg:'10000000'} },
+              victim: null, highlightMSB: false,
+              zh: "<strong>步驟 3 (硬體運作)：</strong>經過一段時間，CPU 這次存取了 <code>Page A</code> 與 <code>Page B</code>。硬體將它們的 R 位元設為 1。請注意，C 這次沒有被存取。", 
+              en: "<strong>Step 3 (Hardware):</strong> Time passes. CPU accesses <code>Page A</code> and <code>Page B</code>. Hardware sets their R-bits to 1. Note that C was not accessed this time." 
+            },
+            
+            { 
+              state: { A: {r:0, reg:'11000000'}, B: {r:0, reg:'10000000'}, C: {r:0, reg:'01000000'} },
+              victim: null, highlightMSB: true,
+              zh: "<strong>步驟 4 (OS 時鐘中斷 Tick)：</strong>再次執行平移與寫入 MSB。<code>A</code> 連續兩次被存取，累加到 192。<code>B</code> 首獲存取變成 128。而 <code>C</code> 因為沒被存取，原本的 1 被「向右推擠 (老化)」，數值降為 64。", 
+              en: "<strong>Step 4 (OS Clock Tick):</strong> Shift and insert MSB again. <code>A</code> was accessed twice consecutively, value is 192. <code>B</code> gets its first access, value 128. <code>C</code> was untouched, its previous 1 is shifted right (aging), dropping its value to 64." 
+            },
+            
+            { 
+              state: { A: {r:0, reg:'11000000'}, B: {r:0, reg:'10000000'}, C: {r:0, reg:'01000000'} },
+              victim: 'C', highlightMSB: false,
+              zh: "<strong>步驟 5 (缺頁替換 Page Fault)：</strong>系統記憶體滿了，必須踢出一個分頁。OS 將暫存器視為整數比對：A(192) > B(128) > C(64)。<strong><code>Page C</code> 的數值最小，代表它最久沒被使用，因此 C 被選為受害者踢出！</strong>", 
+              en: "<strong>Step 5 (Page Fault Eviction):</strong> Memory is full, eviction needed. OS compares registers as integers: A(192) > B(128) > C(64). <strong><code>Page C</code> has the smallest value, meaning it's the least recently used. C is evicted!</strong>" 
+            }
+        ];
+
+        const i18n = {
+            zh: {
+                title: "老化演算法 (Aging Algorithm) 運作演繹",
+                langBtn: "Switch to English",
+                prevBtn: "上一步",
+                nextBtn: "下一步",
+                hdrPage: "分頁 (Page)",
+                hdrRbit: "R 位元<br>(硬體)",
+                hdrReg: "8位元暫存器 (OS 軟體)<br><span style='font-size:12px; color:#666;'>← MSB (最新) | LSB (最舊) →</span>",
+                hdrVal: "十進制整數值"
+            },
+            en: {
+                title: "Aging Algorithm (LRU Approx) Animation",
+                langBtn: "切換至中文",
+                prevBtn: "Previous",
+                nextBtn: "Next",
+                hdrPage: "Page",
+                hdrRbit: "R-Bit<br>(Hardware)",
+                hdrReg: "8-bit Register (OS Software)<br><span style='font-size:12px; color:#666;'>← MSB (Newest) | LSB (Oldest) →</span>",
+                hdrVal: "Decimal Value"
+            }
+        };
+
+        // 建立 8-bit HTML 結構
+        function buildRegisterHTML(regString, highlightMSB) {
+            let html = '';
+            for(let i=0; i<8; i++) {
+                let bitVal = regString[i];
+                let classes = 'bit';
+                if(bitVal === '1') classes += ' one';
+                if(i === 0 && highlightMSB && bitVal === '1') classes += ' highlight';
+                html += `<div class="${classes}">${bitVal}</div>`;
+            }
+            return html;
+        }
+
+        function updateUI() {
+            // 文字切換
+            document.getElementById('title').innerText = i18n[currentLang].title;
+            document.getElementById('langBtn').innerText = i18n[currentLang].langBtn;
+            document.getElementById('prevBtn').innerText = i18n[currentLang].prevBtn;
+            document.getElementById('nextBtn').innerText = i18n[currentLang].nextBtn;
+            document.getElementById('hdr-page').innerHTML = i18n[currentLang].hdrPage;
+            document.getElementById('hdr-rbit').innerHTML = i18n[currentLang].hdrRbit;
+            document.getElementById('hdr-reg').innerHTML = i18n[currentLang].hdrReg;
+            document.getElementById('hdr-val').innerHTML = i18n[currentLang].hdrVal;
+            
+            const stepData = timeline[currentStep];
+            document.getElementById('description').innerHTML = currentLang === 'zh' ? stepData.zh : stepData.en;
+
+            document.getElementById('prevBtn').disabled = currentStep === 0;
+            document.getElementById('nextBtn').disabled = currentStep === totalSteps;
+
+            // 更新行資料 (A, B, C)
+            const pages = ['A', 'B', 'C'];
+            pages.forEach(p => {
+                const data = stepData.state[p];
+                
+                // R-Bit
+                const rNode = document.getElementById(`r-${p}`);
+                rNode.innerText = data.r;
+                if(data.r === 1) rNode.classList.add('active');
+                else rNode.classList.remove('active');
+
+                // Shift Register
+                const regNode = document.getElementById(`reg-${p}`);
+                regNode.innerHTML = buildRegisterHTML(data.reg, stepData.highlightMSB);
+
+                // Decimal Value
+                const valNode = document.getElementById(`val-${p}`);
+                valNode.innerText = parseInt(data.reg, 2);
+
+                // Victim Highlight
+                const rowNode = document.getElementById(`row-${p}`);
+                if(stepData.victim === p) rowNode.classList.add('victim');
+                else rowNode.classList.remove('victim');
+            });
+        }
+
+        function toggleLang() {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            updateUI();
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps) {
+                currentStep++;
+                updateUI();
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 0) {
+                currentStep--;
+                updateUI();
+            }
+        }
+
+        // 初始載入
+        updateUI();
+    </script>
+</body>
+</html>

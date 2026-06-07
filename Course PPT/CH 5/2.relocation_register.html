@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relocation Register Animation</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1e1e1e;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px;
+            margin: 0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 850px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #444;
+            padding-bottom: 15px;
+        }
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background-color: #007acc;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            transition: background 0.2s, transform 0.1s;
+        }
+        button:hover { background-color: #005999; }
+        button:active { transform: scale(0.97); }
+        button:disabled { background-color: #444; color: #888; cursor: not-allowed; }
+
+        .animation-container {
+            position: relative;
+            width: 850px;
+            height: 450px;
+            background-color: #252526;
+            border-radius: 12px;
+            border: 1px solid #333;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            overflow: hidden;
+            margin-bottom: 25px;
+        }
+        
+        /* 系統元件樣式 */
+        .component {
+            position: absolute;
+            padding: 15px;
+            border-radius: 8px;
+            font-weight: bold;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            z-index: 2;
+        }
+        .cpu { top: 160px; left: 40px; width: 100px; height: 100px; background: linear-gradient(135deg, #d32f2f, #b71c1c); color: white;}
+        .mmu-box { top: 70px; left: 250px; width: 280px; height: 280px; border: 2px dashed #666; border-radius: 10px; z-index: 1;}
+        .mmu-label { position: absolute; top: 80px; left: 260px; color: #888; font-weight: bold; z-index: 1;}
+        
+        .logical-addr { top: 180px; left: 270px; width: 100px; height: 60px; background-color: #f57c00; color: white; font-size: 14px;}
+        .relocation-reg { top: 90px; left: 380px; width: 130px; height: 60px; background-color: #1976d2; color: white; font-size: 14px;}
+        .adder { top: 185px; left: 420px; width: 50px; height: 50px; background-color: #424242; color: white; border-radius: 50%; font-size: 24px;}
+        .physical-addr { top: 280px; left: 380px; width: 130px; height: 50px; background-color: #8e24aa; color: white; font-size: 14px;}
+        
+        .ram { top: 120px; left: 650px; width: 140px; height: 200px; background: linear-gradient(135deg, #388e3c, #1b5e20); color: white;}
+        .ram-target { position: absolute; top: 120px; left: 10px; width: 120px; height: 30px; background-color: rgba(255,255,255,0.2); border: 1px solid #fff; display: flex; justify-content: center; align-items: center; font-size: 12px; opacity: 0; transition: opacity 0.5s;}
+
+        /* 動畫資料流 / 信號點 */
+        .signal {
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background-color: #00e5ff;
+            border-radius: 50%;
+            box-shadow: 0 0 15px 5px rgba(0, 229, 255, 0.6);
+            opacity: 0;
+            z-index: 3;
+            transition: top 0.8s ease-in-out, left 0.8s ease-in-out, opacity 0.3s;
+        }
+
+        .desc-box {
+            width: 100%;
+            max-width: 810px;
+            background-color: #2d2d30;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 5px solid #007acc;
+            font-size: 17px;
+            line-height: 1.6;
+            min-height: 90px;
+        }
+
+        .controls { margin-top: 25px; display: flex; gap: 15px; }
+
+        /* 資料數值顯示 */
+        .val { font-family: monospace; font-size: 18px; margin-top: 5px; color: #ffeb3b; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1 id="title" style="margin:0; font-size: 24px;">硬體重定址暫存器運作演繹</h1>
+        <button onclick="toggleLang()" id="langBtn">Switch to English</button>
+    </div>
+
+    <div class="animation-container">
+        <div class="component cpu">CPU</div>
+        
+        <div class="mmu-box"></div>
+        <div class="mmu-label" id="label-mmu">MMU (記憶體管理單元)</div>
+
+        <div class="component logical-addr">
+            <span id="label-logical">邏輯位址</span>
+            <div class="val" id="val-logical">345</div>
+        </div>
+
+        <div class="component relocation-reg">
+            <span id="label-rr">重定址暫存器</span>
+            <div class="val" id="val-rr">10000</div>
+        </div>
+
+        <div class="component adder">+</div>
+
+        <div class="component physical-addr">
+            <span id="label-physical">實體位址</span>
+            <div class="val" id="val-physical">?????</div>
+        </div>
+
+        <div class="component ram">
+            <span id="label-ram">實體記憶體<br>(RAM)</span>
+            <div class="ram-target" id="ram-slot">Addr: 10345</div>
+        </div>
+
+        <div class="signal" id="dot"></div>
+    </div>
+
+    <div class="desc-box" id="description">
+        請點擊「下一步」開始演繹重定址暫存器的位址轉換過程。
+    </div>
+
+    <div class="controls">
+        <button onclick="prevStep()" id="prevBtn" disabled>上一步</button>
+        <button onclick="nextStep()" id="nextBtn">下一步</button>
+    </div>
+
+    <script>
+        let currentLang = 'zh';
+        let currentStep = 0;
+        const totalSteps = 5;
+
+        // 語系字典
+        const i18n = {
+            zh: {
+                title: "硬體重定址暫存器運作演繹",
+                langBtn: "Switch to English",
+                prevBtn: "上一步",
+                nextBtn: "下一步",
+                mmu: "MMU (記憶體管理單元)",
+                logical: "邏輯位址",
+                rr: "重定址暫存器",
+                physical: "實體位址",
+                ram: "實體記憶體<br>(RAM)",
+                steps: [
+                    "請點擊「下一步」開始演繹重定址暫存器的位址轉換過程。",
+                    "<strong>步驟 1：CPU 發出邏輯位址</strong><br>程式執行時，CPU 需要讀取資料，發出相對於程式起始點的「邏輯位址」(例如：345)。",
+                    "<strong>步驟 2：位址進入 MMU</strong><br>邏輯位址傳遞到記憶體管理單元 (MMU) 中準備進行硬體轉換。",
+                    "<strong>步驟 3：加法器運算</strong><br>MMU 將邏輯位址 (345) 與作業系統預先設定好的「重定址暫存器」數值 (10000) 送入硬體加法器。",
+                    "<strong>步驟 4：產生實體位址</strong><br>硬體瞬間完成加法運算 (10000 + 345)，計算出資料在 RAM 中的真正「實體位址」(10345)。",
+                    "<strong>步驟 5：存取實體記憶體</strong><br>系統透過實體位址總線，成功到實體記憶體 (RAM) 的 10345 區塊存取目標資料！"
+                ]
+            },
+            en: {
+                title: "Hardware Relocation Register Animation",
+                langBtn: "切換至中文",
+                prevBtn: "Previous",
+                nextBtn: "Next",
+                mmu: "MMU (Memory Management Unit)",
+                logical: "Logical Addr",
+                rr: "Relocation Reg.",
+                physical: "Physical Addr",
+                ram: "Physical Memory<br>(RAM)",
+                steps: [
+                    "Click 'Next' to start the relocation register address translation process.",
+                    "<strong>Step 1: CPU Issues Logical Address</strong><br>During execution, the CPU requests data using a 'Logical Address' relative to the program's start (e.g., 345).",
+                    "<strong>Step 2: Address enters MMU</strong><br>The logical address is sent to the Memory Management Unit (MMU) for hardware translation.",
+                    "<strong>Step 3: Adder Calculation</strong><br>The MMU sends both the logical address (345) and the pre-set value in the 'Relocation Register' (10000) to the hardware adder.",
+                    "<strong>Step 4: Generate Physical Address</strong><br>The hardware instantly performs the addition (10000 + 345) to determine the absolute 'Physical Address' (10345).",
+                    "<strong>Step 5: Access Physical Memory</strong><br>The system uses the physical address bus to successfully access the target data at block 10345 in RAM!"
+                ]
+            }
+        };
+
+        const dot = document.getElementById('dot');
+        const valPhysical = document.getElementById('val-physical');
+        const ramSlot = document.getElementById('ram-slot');
+
+        function updateUI() {
+            // 更新文字與介面語言
+            document.getElementById('title').innerText = i18n[currentLang].title;
+            document.getElementById('langBtn').innerText = i18n[currentLang].langBtn;
+            document.getElementById('prevBtn').innerText = i18n[currentLang].prevBtn;
+            document.getElementById('nextBtn').innerText = i18n[currentLang].nextBtn;
+            document.getElementById('description').innerHTML = i18n[currentLang].steps[currentStep];
+            
+            document.getElementById('label-mmu').innerText = i18n[currentLang].mmu;
+            document.getElementById('label-logical').innerText = i18n[currentLang].logical;
+            document.getElementById('label-rr').innerText = i18n[currentLang].rr;
+            document.getElementById('label-physical').innerText = i18n[currentLang].physical;
+            document.getElementById('label-ram').innerHTML = i18n[currentLang].ram;
+
+            // 更新按鈕狀態
+            document.getElementById('prevBtn').disabled = currentStep === 0;
+            document.getElementById('nextBtn').disabled = currentStep === totalSteps;
+
+            // 初始化數值狀態
+            if (currentStep < 4) {
+                valPhysical.innerText = "?????";
+                valPhysical.style.color = "#888";
+            } else {
+                valPhysical.innerText = "10345";
+                valPhysical.style.color = "#ffeb3b";
+            }
+
+            if (currentStep === 5) {
+                ramSlot.style.opacity = "1";
+            } else {
+                ramSlot.style.opacity = "0";
+            }
+
+            // 執行 CSS 動畫路徑定位
+            switch(currentStep) {
+                case 0: // 初始隱藏
+                    dot.style.opacity = '0';
+                    dot.style.top = '200px';
+                    dot.style.left = '120px';
+                    break;
+                case 1: // CPU 準備送出
+                    dot.style.opacity = '1';
+                    dot.style.top = '200px';
+                    dot.style.left = '120px';
+                    break;
+                case 2: // CPU -> Logical Addr box
+                    dot.style.opacity = '1';
+                    dot.style.top = '200px';
+                    dot.style.left = '250px';
+                    break;
+                case 3: // Logical Addr -> Adder, 模擬 Relocation reg 也進來
+                    dot.style.opacity = '1';
+                    dot.style.top = '200px';
+                    dot.style.left = '400px';
+                    break;
+                case 4: // Adder -> Physical Addr box
+                    dot.style.opacity = '1';
+                    dot.style.top = '295px';
+                    dot.style.left = '435px';
+                    break;
+                case 5: // Physical Addr box -> RAM
+                    dot.style.opacity = '1';
+                    dot.style.top = '260px';
+                    dot.style.left = '630px';
+                    break;
+            }
+        }
+
+        function toggleLang() {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            updateUI();
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps) {
+                currentStep++;
+                updateUI();
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 0) {
+                currentStep--;
+                updateUI();
+            }
+        }
+
+        // 初始載入
+        updateUI();
+    </script>
+</body>
+</html>

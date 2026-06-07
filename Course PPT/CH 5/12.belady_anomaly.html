@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Belady's Anomaly Animation</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 950px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        h1 { margin: 0; font-size: 24px; color: #ff5252; }
+        
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background-color: #007acc;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            transition: background 0.2s, transform 0.1s;
+        }
+        button:hover { background-color: #005999; }
+        button:active { transform: scale(0.97); }
+        button:disabled { background-color: #444; color: #888; cursor: not-allowed; }
+
+        .animation-container {
+            width: 950px;
+            background-color: #1e1e1e;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+            border: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        /* 參考字串區 */
+        .ref-string-container {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .ref-box {
+            width: 35px;
+            height: 35px;
+            background-color: #2d2d2d;
+            border: 2px solid #555;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+        .ref-box.active {
+            border-color: #ffeb3b;
+            background-color: rgba(255, 235, 59, 0.2);
+            box-shadow: 0 0 15px rgba(255, 235, 59, 0.5);
+            transform: scale(1.15);
+        }
+
+        /* 比較區域 */
+        .comparison-area {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            gap: 20px;
+        }
+
+        .system-box {
+            background: #252526;
+            border: 1px solid #444;
+            border-radius: 10px;
+            padding: 20px;
+            width: 45%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .sys-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #4db8ff;
+            margin-bottom: 10px;
+        }
+
+        .fault-counter {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            padding: 5px 15px;
+            border-radius: 8px;
+            background: #111;
+            border: 1px solid #333;
+        }
+        .fault-counter span { color: #ff5252; font-family: monospace; font-size: 28px;}
+        .fault-counter.highlight span { color: #ffeb3b; text-shadow: 0 0 10px #ffeb3b; }
+
+        /* 記憶體頁框 */
+        .ram-container {
+            display: flex;
+            gap: 15px;
+        }
+        .frame {
+            width: 60px;
+            height: 80px;
+            border: 2px dashed #4caf50;
+            border-radius: 8px;
+            background-color: rgba(76, 175, 80, 0.05);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .page {
+            width: 50px;
+            height: 70px;
+            background: linear-gradient(135deg, #2196f3, #1565c0);
+            border-radius: 4px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            font-weight: bold;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+            opacity: 0;
+            transform: scale(0.5);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .page.visible { opacity: 1; transform: scale(1); }
+        .page.hit { background: linear-gradient(135deg, #4caf50, #2e7d32); }
+        .page.fault { background: linear-gradient(135deg, #ff5252, #c62828); }
+
+        .desc-box {
+            width: 100%;
+            max-width: 910px;
+            background-color: #252526;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 5px solid #ff5252;
+            font-size: 17px;
+            line-height: 1.6;
+            min-height: 90px;
+        }
+
+        .controls { margin-top: 25px; display: flex; gap: 15px; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1 id="title">Belady 異常現象 (Belady's Anomaly)</h1>
+        <button onclick="toggleLang()" id="langBtn">Switch to English</button>
+    </div>
+
+    <div class="animation-container">
+        <div style="margin-bottom: 5px; color: #aaa; font-size: 14px;" id="lbl-ref">存取序列 (Reference String)</div>
+        <div class="ref-string-container" id="ref-string">
+            <div class="ref-box" id="r0">1</div><div class="ref-box" id="r1">2</div>
+            <div class="ref-box" id="r2">3</div><div class="ref-box" id="r3">4</div>
+            <div class="ref-box" id="r4">1</div><div class="ref-box" id="r5">2</div>
+            <div class="ref-box" id="r6">5</div><div class="ref-box" id="r7">1</div>
+            <div class="ref-box" id="r8">2</div><div class="ref-box" id="r9">3</div>
+            <div class="ref-box" id="r10">4</div><div class="ref-box" id="r11">5</div>
+        </div>
+
+        <div class="comparison-area">
+            <div class="system-box">
+                <div class="sys-title" id="lbl-sys3">系統 A (3 個頁框)</div>
+                <div class="fault-counter" id="lbl-pf3">Page Faults: <span id="pf3-val">0</span></div>
+                <div class="ram-container" id="ram3">
+                    <div class="frame"><div class="page" id="f3-0"></div></div>
+                    <div class="frame"><div class="page" id="f3-1"></div></div>
+                    <div class="frame"><div class="page" id="f3-2"></div></div>
+                </div>
+            </div>
+
+            <div class="system-box">
+                <div class="sys-title" id="lbl-sys4" style="color: #ffeb3b;">系統 B (4 個頁框)</div>
+                <div class="fault-counter" id="lbl-pf4">Page Faults: <span id="pf4-val">0</span></div>
+                <div class="ram-container" id="ram4">
+                    <div class="frame"><div class="page" id="f4-0"></div></div>
+                    <div class="frame"><div class="page" id="f4-1"></div></div>
+                    <div class="frame"><div class="page" id="f4-2"></div></div>
+                    <div class="frame"><div class="page" id="f4-3"></div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="desc-box" id="description">
+        請點擊「下一步」開始演繹。觀察當記憶體變大時，缺頁錯誤次數是否真的會減少？
+    </div>
+
+    <div class="controls">
+        <button onclick="prevStep()" id="prevBtn" disabled>上一步</button>
+        <button onclick="nextStep()" id="nextBtn">下一步</button>
+    </div>
+
+    <script>
+        let currentLang = 'zh';
+        let currentStep = 0;
+        
+        const refSequence = [1, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5];
+        const totalSteps = refSequence.length;
+
+        const i18n = {
+            zh: {
+                title: "Belady 異常現象 (Belady's Anomaly)",
+                langBtn: "Switch to English",
+                prevBtn: "上一步",
+                nextBtn: "下一步",
+                lblRef: "存取序列 (Reference String)",
+                lblSys3: "系統 A (3 個頁框)",
+                lblSys4: "系統 B (4 個頁框)",
+                lblPf: "缺頁錯誤 (Page Faults): ",
+                descInit: "<strong>初始狀態：</strong>使用 FIFO 演算法。左邊是 3 個頁框的記憶體，右邊是 4 個頁框。常理來說，4 個頁框的缺頁次數應該較少。請點擊「下一步」開始驗證。",
+                descEnd: "<strong>結論：</strong>驚人的結果！3 個頁框發生了 <strong>9 次</strong>缺頁；而 4 個頁框居然發生了 <strong>10 次</strong>缺頁！這證明了在 FIFO 中，增加記憶體不一定能提升效能，這就是 <strong>Belady 異常</strong>。"
+            },
+            en: {
+                title: "Belady's Anomaly",
+                langBtn: "切換至中文",
+                prevBtn: "Previous",
+                nextBtn: "Next",
+                lblRef: "Reference String",
+                lblSys3: "System A (3 Frames)",
+                lblSys4: "System B (4 Frames)",
+                lblPf: "Page Faults: ",
+                descInit: "<strong>Initial State:</strong> Using FIFO. Left has 3 frames, right has 4 frames. Logically, 4 frames should yield fewer page faults. Click 'Next' to verify.",
+                descEnd: "<strong>Conclusion:</strong> Astonishing result! 3 frames caused <strong>9 faults</strong>; but 4 frames caused <strong>10 faults</strong>! This proves that in FIFO, increasing memory doesn't guarantee better performance. This is <strong>Belady's Anomaly</strong>."
+            }
+        };
+
+        // 模擬 FIFO 演算法，預先計算每一步的狀態
+        function simulateFIFO(framesCount, sequence) {
+            let memory = []; // 存放當前頁面
+            let queue = [];  // FIFO 佇列
+            let faults = 0;
+            let history = []; // 記錄每一步的狀態
+
+            for (let i = 0; i < sequence.length; i++) {
+                let page = sequence[i];
+                let isFault = false;
+                let victimIdx = -1;
+
+                if (!memory.includes(page)) {
+                    isFault = true;
+                    faults++;
+                    if (memory.length < framesCount) {
+                        memory.push(page);
+                        queue.push(memory.length - 1); // 記錄 index
+                        victimIdx = memory.length - 1;
+                    } else {
+                        // 置換
+                        let replaceIdx = queue.shift();
+                        memory[replaceIdx] = page;
+                        queue.push(replaceIdx);
+                        victimIdx = replaceIdx;
+                    }
+                }
+
+                history.push({
+                    mem: [...memory],
+                    faults: faults,
+                    isFault: isFault,
+                    targetIdx: isFault ? victimIdx : memory.indexOf(page)
+                });
+            }
+            return history;
+        }
+
+        const history3 = simulateFIFO(3, refSequence);
+        const history4 = simulateFIFO(4, refSequence);
+
+        function updateUI() {
+            // 文字更新
+            document.getElementById('title').innerText = i18n[currentLang].title;
+            document.getElementById('langBtn').innerText = i18n[currentLang].langBtn;
+            document.getElementById('prevBtn').innerText = i18n[currentLang].prevBtn;
+            document.getElementById('nextBtn').innerText = i18n[currentLang].nextBtn;
+            document.getElementById('lbl-ref').innerText = i18n[currentLang].lblRef;
+            document.getElementById('lbl-sys3').innerText = i18n[currentLang].lblSys3;
+            document.getElementById('lbl-sys4').innerText = i18n[currentLang].lblSys4;
+            
+            document.getElementById('lbl-pf3').innerHTML = i18n[currentLang].lblPf + `<span id="pf3-val">0</span>`;
+            document.getElementById('lbl-pf4').innerHTML = i18n[currentLang].lblPf + `<span id="pf4-val">0</span>`;
+
+            // 按鈕狀態
+            document.getElementById('prevBtn').disabled = currentStep === 0;
+            document.getElementById('nextBtn').disabled = currentStep === totalSteps;
+
+            // 參考字串高亮
+            for (let i = 0; i < refSequence.length; i++) {
+                let box = document.getElementById('r' + i);
+                if (currentStep > 0 && i === currentStep - 1) box.classList.add('active');
+                else box.classList.remove('active');
+            }
+
+            // 更新說明文字
+            const descBox = document.getElementById('description');
+            if (currentStep === 0) {
+                descBox.innerHTML = i18n[currentLang].descInit;
+                renderMemory(3, null);
+                renderMemory(4, null);
+                document.getElementById('pf3-val').innerText = '0';
+                document.getElementById('pf4-val').innerText = '0';
+                document.getElementById('lbl-pf3').classList.remove('highlight');
+                document.getElementById('lbl-pf4').classList.remove('highlight');
+            } else if (currentStep === totalSteps) {
+                descBox.innerHTML = i18n[currentLang].descEnd;
+                renderMemory(3, history3[currentStep - 1]);
+                renderMemory(4, history4[currentStep - 1]);
+                // 強調最終結果
+                document.getElementById('lbl-pf4').classList.add('highlight');
+            } else {
+                let page = refSequence[currentStep - 1];
+                let s3 = history3[currentStep - 1];
+                let s4 = history4[currentStep - 1];
+                
+                let textZh = `<strong>步驟 ${currentStep}：</strong> CPU 請求頁面 <code>${page}</code>。<br>`;
+                textZh += `系統 A (3頁框)：${s3.isFault ? '發生缺頁 (Fault)' : '命中 (Hit)'}。累積錯誤：${s3.faults}<br>`;
+                textZh += `系統 B (4頁框)：${s4.isFault ? '發生缺頁 (Fault)' : '命中 (Hit)'}。累積錯誤：${s4.faults}`;
+                
+                let textEn = `<strong>Step ${currentStep}:</strong> CPU requests page <code>${page}</code>.<br>`;
+                textEn += `System A (3 Frames): ${s3.isFault ? 'Page Fault' : 'Page Hit'}. Total faults: ${s3.faults}<br>`;
+                textEn += `System B (4 Frames): ${s4.isFault ? 'Page Fault' : 'Page Hit'}. Total faults: ${s4.faults}`;
+
+                descBox.innerHTML = currentLang === 'zh' ? textZh : textEn;
+                renderMemory(3, s3);
+                renderMemory(4, s4);
+                document.getElementById('lbl-pf3').classList.remove('highlight');
+                document.getElementById('lbl-pf4').classList.remove('highlight');
+            }
+        }
+
+        function renderMemory(sysCount, stateData) {
+            let valNode = document.getElementById(`pf${sysCount}-val`);
+            
+            if (!stateData) {
+                valNode.innerText = '0';
+                for (let i = 0; i < sysCount; i++) {
+                    let pNode = document.getElementById(`f${sysCount}-${i}`);
+                    pNode.className = 'page';
+                    pNode.innerText = '';
+                }
+                return;
+            }
+
+            valNode.innerText = stateData.faults;
+
+            for (let i = 0; i < sysCount; i++) {
+                let pNode = document.getElementById(`f${sysCount}-${i}`);
+                
+                if (stateData.mem[i] !== undefined) {
+                    pNode.innerText = stateData.mem[i];
+                    pNode.className = 'page visible'; // Reset classes
+                    
+                    // 特效
+                    if (i === stateData.targetIdx) {
+                        pNode.classList.add(stateData.isFault ? 'fault' : 'hit');
+                        // 動畫重啟 trick
+                        pNode.style.transform = 'scale(1.1)';
+                        setTimeout(() => { pNode.style.transform = 'scale(1)'; }, 300);
+                    }
+                } else {
+                    pNode.className = 'page';
+                    pNode.innerText = '';
+                }
+            }
+        }
+
+        function toggleLang() {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            updateUI();
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps) {
+                currentStep++;
+                updateUI();
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 0) {
+                currentStep--;
+                updateUI();
+            }
+        }
+
+        // 初始化
+        updateUI();
+    </script>
+</body>
+</html>

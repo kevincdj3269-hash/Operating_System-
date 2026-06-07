@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>作業系統：虛擬記憶體與反轉分頁表</title>
+    <style>
+        /* ====================== 變數定義與基礎樣式 ====================== */
+        :root {
+            --primary-color: #6c5ce7; /* 主色 - 紫色 */
+            --secondary-color: #00cec9; /* 次色 - 青綠色 */
+            --accent-color: #fd79a8; /* 強調色 - 粉紅色 */
+            --dark-bg: #1a1a2e;
+            --mid-bg: #2d3436;
+            --text-light: #ecf0f1;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+            background: linear-gradient(135deg, #0c0c1d 0%, #1a1a3e 50%, #2d1b69 100%);
+            color: var(--text-light);
+            min-height: 100vh;
+        }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 30px 20px; }
+
+        /* ====================== 語言切換器 ====================== */
+        .lang-toggle {
+            position: fixed; top: 20px; right: 20px; z-index: 1000;
+            display: flex; gap: 8px;
+        }
+        .lang-btn {
+            padding: 8px 16px; border: none;
+            border-radius: 20px; cursor: pointer; font-size: 14px; transition: all 0.3s;
+            background: rgba(255, 255, 255, 0.1); color: #fff;
+        }
+        .lang-btn.active {
+            background: var(--secondary-color); box-shadow: 0 0 15px rgba(0, 206, 201, 0.8);
+        }
+        .lang-btn:hover { transform: scale(1.05); }
+
+        /* ====================== Header & Typography ====================== */
+        header {
+            text-align: center; padding: 70px 20px 50px;
+            background: rgba(0, 0, 0, 0.3);
+            border-bottom: 3px solid var(--primary-color);
+        }
+        header h1 {
+            font-size: 2.8em; margin-bottom: 15px;
+            background: linear-gradient(90deg, var(--secondary-color), var(--primary-color), var(--accent-color));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        header p { font-size: 1.3em; color: #aaa; max-width: 800px; margin: 0 auto; }
+
+        /* ====================== Section Styling (Card) ====================== */
+        .section-card {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 20px; padding: 40px; margin-bottom: 50px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+        }
+        .section-card h2 {
+            font-size: 2em; margin-bottom: 25px; color: var(--secondary-color);
+            display: flex; align-items: center; gap: 15px;
+            border-bottom: 2px solid rgba(0, 206, 201, 0.3);
+            padding-bottom: 10px;
+        }
+
+        /* ====================== Concept Grid (Terminology) ====================== */
+        .concept-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 25px; margin-top: 30px;
+        }
+        .concept-item {
+            background: rgba(255, 255, 255, 0.03); border-radius: 15px; padding: 25px;
+            border-left: 5px solid var(--primary-color); transition: all 0.3s;
+        }
+        .concept-item:hover {
+            background: rgba(255, 255, 255, 0.1); transform: translateY(-5px) scale(1.02); box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+        }
+        .concept-item h3 { color: var(--accent-color); margin-bottom: 10px; font-size: 1.15em; }
+        .concept-item p { line-height: 1.7; font-size: 1em; color: #ccc; }
+
+        /* ====================== Step Animation & Control (核心互動區) ====================== */
+        .step-wrapper { margin-bottom: 30px; padding: 20px; border: 1px dashed rgba(255, 255, 255, 0.2); border-radius: 10px;}
+
+        .step-controls {
+            display: flex; gap: 15px; margin: 30px 0; justify-content: center;
+            flex-wrap: wrap; align-items: flex-start;
+        }
+        .step-btn {
+            padding: 14px 32px; border: none; border-radius: 50px; cursor: pointer;
+            font-size: 1em; font-weight: 700; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Button specific styles */
+        .step-btn.prev { background: var(--accent-color); color: #fff; }
+        .step-btn.next { background: var(--secondary-color); color: #fff; }
+        .step-btn.reset { background: var(--primary-color); color: #fff; }
+
+        /* Hover animation effect */
+        .step-btn:hover { transform: scale(1.05); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4); }
+
+
+        /* Step Indicator Dots */
+        #stepIndicator { display: flex; gap: 10px; margin-bottom: 30px; justify-content: center; }
+        .step-dot { width: 18px; height: 18px; border-radius: 50%; background: rgba(255,255,255,0.1); transition: all 0.4s; }
+        .step-dot.active { background: var(--secondary-color); box-shadow: 0 0 15px var(--secondary-color); transform: scale(1.3); }
+        .step-dot.done { background: var(--primary-color); box-shadow: 0 0 15px var(--primary-color); }
+
+
+        /* ====================== Visualization Area (實際演繹區) ====================== */
+
+        .anim-area {
+            background: rgba(25, 30, 46, 0.8);
+            border-radius: 16px; padding: 40px;
+            min-height: 500px; box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Page Table Visualization Structure */
+        .page-table-viz {
+            display: flex; gap: 40px; justify-content: space-around; align-items: center;
+            flex-wrap: wrap; min-height: 300px; position: relative;
+        }
+
+        /* Common table styles */
+        .table-block {
+            background: rgba(108,92,231,0.2); border: 2px solid var(--primary-color);
+            border-radius: 15px; padding: 20px; min-width: 250px; max-width: 30%;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+        }
+
+        /* Highlighted state during animation */
+        .table-block.highlight {
+            border-color: var(--secondary-color); box-shadow: 0 0 25px rgba(0,206,201,0.6) !important;
+            transform: scale(1.05); opacity: 1; transition: all 0.4s ease;
+        }
+
+        /* Data Flow/Pointer */
+        .data-flow {
+            position: absolute; top: 120px; left: calc(30% + 20px); right: auto; bottom: auto;
+            height: 2px; width: calc(50% - 60px); background: linear-gradient(to right, var(--accent-color), var(--secondary-color));
+            opacity: 0; transform: scaleX(0); transition: opacity 1s, transform 1s;
+        }
+
+        /* Footer/Result */
+        #result {
+            margin-top: 40px; padding: 20px; background: rgba(25, 30, 46, 0.8);
+            border-radius: 10px; text-align: center;
+            font-size: 1.2em; color: var(--secondary-color); min-height: 50px;
+        }
+
+        /* Responsive Adjustments */
+        @media (max-width: 992px) {
+            header h1 { font-size: 2em; }
+            .concept-grid { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+            .table-block { max-width: 45%; margin-bottom: 30px; }
+        }
+
+    </style>
+</head>
+<body class="dark-mode">
+
+    <!-- 語言切換按鈕 -->
+    <div class="lang-toggle">
+        <button id="toggleChinese" class="lang-btn active" onclick="setLanguage('zh')">中文 (Chinese)</button>
+        <button id="toggleEnglish" class="lang-btn" onclick="setLanguage('en')">中文 (Chinese)</button>
+    </div>
+
+    <!-- Header -->
+    <header>
+        <h1 data-key="title">作業系統：虛擬記憶體與反轉分頁表</h1>
+        <p data-key="subtitle">了解如何從物理記憶體的角度，追蹤哪些虛擬頁面佔用了特定的實體資源。</p>
+    </header>
+
+    <div class="container">
+
+        <!-- 1. 基本概念區 (Concept) -->
+        <section id="concepts" class="section-card">
+            <h2 data-key="conceptTitle">📚 作業系統核心：什麼是虛擬記憶體？</h2>
+            <p style="font-size: 1.1em; margin-bottom: 30px;" data-key="conceptIntro">由於物理記憶體(RAM)的容量限制，作業系統使用虛擬記憶體技術。它讓每個程序都感覺自己擁有一個巨大的、專屬的地址空間。</p>
+
+            <h2 style="margin-top: 40px;" data-key="rptTitle">📖 反轉分頁表 (Reverse Page Table) 的概念</h2>
+            <div class="concept-grid">
+                <!-- Item 1 -->
+                <div class="concept-item">
+                    <h3 data-key="pagingDescTitle">[P] 分頁 (Paging)</h3 data-key="pagingDescText">將地址空間和物理記憶體切成固定大小的塊（Page/Frame）。分頁表通常記錄：$\text{VPN} \rightarrow \text{PFN}$。</h3>
+                </div>
+                <!-- Item 2 -->
+                <div class="concept-item">
+                    <h3 data-key="rptDescTitle">[R] 反轉分頁表 (RPT)</h3>
+                    <p data-key="rptDescText">與傳統分頁表相反，RPT記錄的是：**每個物理頁框 ($\text{PFN}$) 裡儲存了哪些虛擬頁號 ($\text{VPN}$)**。這提供了一個「反向查詢」的能力。</p>
+                </div>
+                 <!-- Item 3 -->
+                <div class="concept-item">
+                    <h3 data-key="useCaseTitle">🛠️ 使用場景</h3>
+                    <p data-key="useCaseText">當我們需要知道一個特定的物理資源 $\text{PFN}$，目前被哪些程序或哪些虛擬頁面所佔用時（例如：Copy-on-Write機制、記憶體追蹤），RPT就非常有用。</p>
+                </div>
+            </div >
+        </section>
+
+        <!-- 2. 詳細運作區與動畫模擬 -->
+        <section id="simulation" class="section-card">
+             <h2 data-key="simTitle">🔍 工作原理演繹：反轉分頁表如何追蹤資源？</h2>
+            <p style="margin-bottom: 30px; line-height: 1.6;" data-key="simIntro">當發生特殊事件（如寫入保護解除、Copy-on-Write），作業系統不直接查詢 $\text{VPN} \rightarrow \text{PFN}$，而是利用 RPT 從物理資源的角度出發來尋找資訊。這是本演繹的重點。</p>
+
+            <!-- Step Indicator -->
+            <div id="stepIndicator"></div >
+
+
+            <!-- Step Controls -->
+            <div class="step-controls">
+                <button id="btnPrev" class="step-btn prev" onclick="navigateStep(-1)" disabled data-key-action="prev">⬅️ 上一步</button>
+                <button id="btnReset" class="step-btn reset" onclick="resetAnimation()" data-key-action="reset">🔄 重設步驟</button>
+                <button id="btnNext" class="step-btn next" onclick="navigateStep(1)" data-key-action="next">下一步 ➡️</button>
+            </div>
+
+            <!-- Step Animation Area -->
+            <div class="anim-area">
+                <!-- Visualization content will be dynamically updated here -->
+                <div class="data-flow" id="dataFlowViz"></div>
+                <div class="page-table-viz">
+                    <!-- Table blocks go here -->
+                </div>
+
+                <div id="result">點擊「下一步」開始演繹反轉分頁表的查找流程。</div>
+            </div >
+        </section>
+        
+    </div>
+
+    <script>
+        // ====================== 語言內容字典 (Data Key System) ======================
+        const content = {
+            zh: {
+                title: "作業系統：虛擬記憶體與反轉分頁表",
+                subtitle: "了解如何從物理記憶體的角度，追蹤哪些虛擬頁面佔用了特定的實體資源。",
+                conceptTitle: "📚 作業系統核心：什麼是虛擬記憶體？",
+                conceptIntro: "由於物理記憶體(RAM)的容量限制，作業系統使用虛擬記憶體技術。這使得每個程序都認為自己有了一片專屬且巨大的、從零開始連續的地址空間。",
+                rptTitle: "📖 反轉分頁表 (Reverse Page Table) 的概念",
+                pagingDescTitle: "傳統分頁表 (Paging)",
+                pagingDescText: "將地址空間和物理記憶體切成固定大小的塊（Page/Frame）。它記錄的是：$\text{VPN} \rightarrow \text{PFN}$。用途是將虛擬地址轉換為物理地址。",
+                rptDescTitle: "反轉分頁表 (RPT)",
+                rptDescText: "相反地，RPT記錄的鍵值是**物理頁框號 ($\text{PFN}$)**，值是包含所有佔用此 $\text{PFN}$ 的 **虛擬頁號 ($\text{VPN}$) 列表**。$\text{PFN} \rightarrow \{[\text{VPN}_a], [\text{VPN}_b]\}$。",
+                useCaseTitle: "🛠️ 主要應用場景",
+                useCaseText: "當系統需要知道一個特定的物理記憶體區塊（$\text{PFN}$）被哪些程序或哪個頁面所共享時 (如 Copy-on-Write機制, 記憶體偵錯)，RPT就非常關鍵。",
+                simTitle: "🔍 工作原理演繹：反轉分頁表如何追蹤資源？",
+                simIntro: "假設發生一個「Copy-on-Write」的事件，系統需要檢查該物理頁框 (PFN) 是否被其他程序共享。我們從 $\text{PFN}$ 出發，透過 RPT 來執行逆向查找。",
+                btnPrev: "⬅️ 上一步",
+                btnNext: "下一步 ➡️",
+                btnReset: "🔄 重設步驟",
+            },
+            en: {
+                title: "Operating System: Virtual Memory and Reverse Page Table",
+                subtitle: "Understand how to track which virtual pages occupy specific physical resources by looking at the physical memory address.",
+                conceptTitle: "📚 OS Core: What is Virtual Memory?",
+                conceptIntro: "Due to limited physical RAM, the OS uses virtual memory. This gives every process the illusion of having a large, private address space starting from zero.",
+                rptTitle: "📖 Reverse Page Table (RPT) Concept",
+                pagingDescTitle: "Traditional Paging Table",
+                pagingDescText: "Maps Virtual Pages to Physical Frames ($\text{VPN} \rightarrow \text{PFN}$). Used to translate a virtual address into a physical one.",
+                rptDescTitle: "Reverse Page Table (RPT)",
+                rptDescText: "Conversely, RPT maps the **Physical Frame Number ($\text{PFN}$)** as the key, and the value is a list of all $\text{VPNs}$ that occupy this $\text{PFN}$. $\text{PFN} \rightarrow \{[\text{VPN}_a], [\text{VPN}_b]\}$.",
+                useCaseTitle: "🛠️ Key Use Cases",
+                useCaseText: "RPT is crucial when the system needs to know which processes or pages are sharing a specific physical resource ($\text{PFN}$) (e.g., Copy-on-Write mechanism, memory debugging).",
+                simTitle: "🔍 Principle Demonstration: How RPT Tracks Resources?",
+                simIntro: "Suppose a 'Copy-on-Write' event occurs, and the system needs to check if a given physical page frame ($\text{PFN}$) is shared by multiple processes. We start from $\text{PFN}$ using the RPT for reverse lookup.",
+                btnPrev: "⬅️ Previous Step",
+                btnNext: "Next Step ➡️",
+                btnReset: "🔄 Reset Steps",
+            }
+        };
+
+        let currentLanguage = 'zh'; // Default language is Chinese
+
+        // --- Language Toggle Functionality ---
+        function setLanguage(lang) {
+            currentLanguage = lang;
+            const contentKeysMap = {
+                'title': 0, 'subtitle': 1, 'conceptTitle': 2, 'conceptIntro': 3, 'rptTitle': 4,
+                'pagingDescTitle': 5, 'pagingDescText': 6, 'rptDescTitle': 7, 'rptDescText': 8,
+                'useCaseTitle': 9, 'useCaseText': 10, 'simTitle': 11, 'simIntro': 12, 
+                'btnPrev': 13, 'btnNext': 14, 'btnReset': 15
+            };
+
+            // Update all text nodes based on the dictionary
+            const keysToUpdate = [
+                { selector: '[data-key="title"]', key: 'title' },
+                { selector: '[data-key="subtitle"]', key: 'subtitle' },
+                { selector: '[data-key="conceptTitle"]', key: 'conceptTitle' },
+                { selector: '[data-key="conceptIntro"]', key: 'conceptIntro' },
+                { selector: '[data-key="rptTitle"]', key: 'rptTitle' },
+                { selector: '[data-key="pagingDescTitle"]', key: 'pagingDescTitle' }, 
+                { selector: '[data-key="pagingDescText"]', key: 'pagingDescText' },
+                { selector: '[data-key="rptDescTitle"]', key: 'rptDescTitle' },
+                { selector: '[data-key="rptDescText"]', key: 'rptDescText' },
+                { selector: '[data-key="useCaseTitle"]', key: 'useCaseTitle' },
+                { selector: '[data-key="useCaseText"]', key: 'useCaseText' },
+                { selector: '[data-key="simTitle"]', key: 'simTitle' },
+                { selector: '[data-key="simIntro"]', key: 'simIntro' }
+            ];
+
+
+            keysToUpdate.forEach(item => {
+                const el = document.querySelector(item.selector);
+                if (el && content[lang] && content[lang][item.key]) {
+                    let contentText = content[lang][item.key];
+                    // Handle special case: the button text is handled below, but we need to update it here too if possible
+                    if (!el.hasAttribute('data-key') || !item.key) return; 
+
+                    // If the element uses data-key and content exists for that key
+                    let dataKey = el.getAttribute('data-key');
+                    if (content[lang] && content[lang][dataKey]) {
+                         el.textContent = content[lang][dataKey];
+                    } else if (!item.key) {
+                        // Fallback for titles/subtitles
+                        el.textContent = contentText;
+                    }
+                }
+            });
+
+
+            // Update button texts explicitly using their data-keys in the structure
+            document.getElementById('btnPrev').textContent = content[lang]['btnPrev'];
+            document.getElementById('btnNext').textContent = content[lang]['btnNext'];
+            document.getElementById('btnReset').textContent = content[lang]['btnReset'];
+
+
+            // Update active class on language buttons
+            document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`toggle${lang === 'zh' ? 'Chinese' : 'English'}`).classList.add('active');
+
+            // Reinitialize the animation to reflect new text
+            resetAnimation();
+        }
+
+
+        // ====================== 步驟動畫狀態管理 (Step Management) ======================
+        let currentStep = 0;
+        const maxSteps = 5; // Total steps for simulation
+
+        const stepData = [
+            { title: "概念：反轉分頁表的結構", key: 'step1', text: "RPT 的關鍵是其結構：索引 (Key) 是物理頁框號 $\text{PFN}$，值 (Value) 是一個包含所有佔用該 PFN 的虛擬頁號 ($\text{VPN}$) 的列表。", highlight: { target: '.data-flow', className: 'highlight' }, action: () => updateVisualization('step1') },
+            { title: "步驟 1：確定物理資源", key: 'step2', text: "我們發現一個特定 $\text{PFN}$（例如，RAM 的某個區塊）正在被系統監控。這個 $\text{PFN}$ 就是我們的查詢起點。", highlight: { target: '.page-table-viz .table-block[data-step="pfn"]', className: 'highlight' }, action: () => updateVisualization('step2') },
+            { title: "步驟 2：執行反向查找", key: 'step3', text: `我們使用 $\text{PFN}$ 作為索引，在 RPT 中進行查詢。RPT 的結構讓這個查找操作非常快，直接定位到該資源的記錄。`, highlight: { target: '.page-table-viz .table-block[data-step="rpt"]', className: 'highlight' }, action: () => updateVisualization('step3') },
+            { title: "步驟 3：讀取所有佔用列表", key: 'step4', text: `從 RPT 的值域中，我們讀取出一個鏈結列表 (Linked List)。這個列表包含了**所有指向此 PFN 的 $\text{VPN}$ 頁號**。`, highlight: { target: '.page-table-viz .table-block[data-step="vpn_list"]', className: 'highlight' }, action: () => updateVisualization('step4') },
+            { title: "步驟 4：達成追蹤目的", key: 'step5', text: `透過 RPT，作業系統可以迅速了解哪些程序（每個 $\text{VPN}$ 對應一個程序）正在共享或使用這塊物理資源。這是執行 Copy-on-Write等複雜操作的基礎！`, highlight: { target: '.page-table-viz .table-block[data-step="result_box"]', className: 'highlight' }, action: () => updateVisualization('step5') }
+        ];
+
+        const stepData = [
+             { title: "概念：反轉分頁表的結構", key: 'step1', text: "RPT 的核心是其構造 $\text{PFN} \rightarrow \{\text{VPN}_1, \text{VPN}_2, ...\}$。它記錄了物理記憶體塊被哪些虛擬地址所佔用。", highlight: { target: '.page-table-viz .table-block[data-step="rpt"]', className: 'highlight' }, action: () => updateVisualization('step1') },
+            { title: "步驟 1：確定要檢查的物理資源", key: 'step2', text: "系統需要追蹤一個特定的物理頁框 $\text{PFN}$。我們將其作為查詢鍵。", highlight: { target: '.page-table-viz .table-block[data-step="pfn"]', className: 'highlight' }, action: () => updateVisualization('step2') },
+            { title: "步驟 2：在 RPT 中查找 PFN", key: 'step3', text: "系統直接使用 $\text{PFN}$ 作為索引，定位到 RPT 中的對應條目。", highlight: { target: '.page-table-viz .table-block[data-step="rpt"]', className: 'highlight' }, action: () => updateVisualization('step3') },
+            { title: "步驟 3：讀取共享的 VPN 列表", key: 'step4', text: "我們從該條目中提取出所有連結的 $\text{VPN}$ 頁號，即這個物理資源的所有使用者。", highlight: { target: '.page-table-viz .table-block[data-step="vpn_list"]', className: 'highlight' }, action: () => updateVisualization('step4') },
+            { title: "步驟 4：實現記憶體追蹤", key: 'step5', text: "透過這個列表，系統可以確認該 $\text{PFN}$ 是否是共享資源（如果列表中有超過一個 $\text{VPN}$），從而做出 Copy-on-Write等決策。", highlight: { target: '.page-table-viz .table-block[data-step="result_box"]', className: 'highlight' }, action: () => updateVisualization('step5') }
+        ];
+
+        // ====================== 渲染與動畫函數 (Rendering & Animation) ======================
+
+        /**
+         * 重設所有視覺元素到初始狀態
+         */
+        function resetAnimation() {
+            currentStep = 0;
+            updateControls();
+            resetVisualization(true);
+            document.getElementById('result').textContent = '';
+             // Run the first step to set up initial UI
+             stepData[0].action();
+        }
+
+        /**
+         * 更新頁面指示器和按鈕狀態 (與原版本相同)
+         */
+        function updateControls() {
+            const indicator = document.getElementById('stepIndicator');
+            indicator.innerHTML = ''; // Clear previous dots
+
+            for (let i = 0; i < maxSteps; i++) {
+                const dot = document.createElement('div');
+                dot.className = 'step-dot';
+                if (i === currentStep) {
+                    dot.classList.add('active');
+                } else if (i < currentStep) {
+                    dot.classList.add('done');
+                }
+                indicator.appendChild(dot);
+            }
+
+            // Update button classes and disabled states
+            document.getElementById('btnPrev').disabled = (currentStep === 0);
+            document.getElementById('btnNext').disabled = (currentStep === maxSteps - 1);
+            document.getElementById('btnNext').style.opacity = (currentStep >= maxSteps - 1) ? 0.5 : 1;
+        }
+
+        /**
+         * 主要的視覺化更新函數，根據步驟內容渲染新的動畫模擬區塊。
+         */
+        function updateVisualization(stepKey) {
+            const vizContainer = document.querySelector('.page-table-viz');
+            const flowViz = document.getElementById('dataFlowViz');
+            const resultDiv = document.getElementById('result');
+
+            // 清空所有舊的高亮和內容
+            resetVisualization(); 
+            
+             // --- Step 1: RPT Definition Setup ---
+            if (stepKey === 'step1') {
+                vizContainer.innerHTML = `
+                    <div class="table-block" data-step="rpt">
+                        <h4 style="color: var(--secondary-color);">反轉分頁表 (RPT)</h4>
+                        <p>結構：$\text{PFN}$ 索引 $\rightarrow$ {所有 $\text{VPN}$ 列表}</p>
+                        <small>(記錄的是物理資源被哪些虛擬地址所使用)</small>
+                    </div>
+                `;
+                 flowViz.style.opacity = 0; // Hide flow on reset/setup
+                 resultDiv.textContent = stepData[0].text;
+
+            }
+            // --- Step 2: Start Lookup (Identify PFN) ---
+            else if (stepKey === 'step2') {
+                vizContainer.innerHTML = `
+                    <div class="table-block" data-step="pfn">
+                        <h4 style="color: var(--accent-color);">目標物理資源 PFN</h4>
+                        <p>系統確定了要檢查的實體記憶體區塊：$\mathbf{PFN} = 102$</p>
+                    </div>
+                     <div class="table-block" data-step="vpn_example">
+                        <h4 style="color: var(--secondary-color);">備註</h4>
+                        <p>我們從物理資源的角度出發，而不是從虛擬地址 $(VA)$ 開始。</p>
+                    </div>
+                `;
+                 setTimeout(() => { flowViz.style.opacity = 1; }, 50); // Show flow visually
+
+                resultDiv.textContent = stepData[1].text;
+            }
+
+
+            // --- Step 3: RPT Lookup Simulation ---
+            else if (stepKey === 'step3') {
+                vizContainer.innerHTML = `
+                    <div class="table-block" data-step="pfn_input">
+                        <h4 style="color: var(--accent-color);">查詢鍵：PFN</h4>
+                         <p>我們將 $\text{PFN}$ ($102$) 作為索引，在 RPT 中進行查找。</p>
+                    </div>
+                    <div class="table-block" data-step="rpt">
+                        <h4 style="color: var(--secondary-color);">RPT 查找結果</h4>
+                        <p style="font-size: 1.3em;">找到的條目：$\text{PFN } 102 \rightarrow$ {List}</p>
+                    </div>
+                `;
+                 resultDiv.textContent = stepData[2].text;
+            }
+
+             // --- Step 4: Reading the Linked List (The core action) ---
+             else if (stepKey === 'step4') {
+                vizContainer.innerHTML = `
+                    <div class="table-block" data-step="pfn_input">
+                        <h4 style="color: var(--accent-color);">查詢鍵：PFN 102</h4>
+                    </div>
+                     <div class="table-block" data-step="rpt">
+                        <h4 style="color: var(--secondary-color);">RPT 值域 (Value)</h4>
+                        <p style="font-size: 1.3em;">{ $\text{VPN}_A$ (Process X), $\text{VPN}_B$ (Process Y), $\text{VPN}_C$ (Kernel) }</p>
+                    </div>
+                     <div class="table-block" data-step="vpn_list">
+                        <h4 style="color: var(--primary-color);">佔用列表</h4>
+                        <p style="font-size: 1.2em;">這個物理資源 ($\text{PFN}$) 正被 $\text{VPN}_A, \text{VPN}_B, \text{VPN}_C$ 三個不同的虛擬頁面所共享。這是共用記憶體的證據！</p>
+                    </div>
+                `;
+                 resultDiv.textContent = stepData[3].text;
+            }
+
+             // --- Step 5: Conclusion (Utility) ---
+             else if (stepKey === 'step5') {
+                vizContainer.innerHTML = `
+                    <div class="table-block" data-step="pfn_input">
+                        <h4 style="color: var(--accent-color);">物理資源 PFN</h4>
+                    </div>
+                     <div class="table-block" data-step="rpt">
+                        <h4 style="color: var(--secondary-color);">RPT 查找結果</h4>
+                        <p style="font-size: 1.3em;">{ ... }</p>
+                    </div>
+                     <div class="table-block" data-step="result_box">
+                         <h4 style="color: var(--primary-color);">最終判斷 (決定 Copy-on-Write)</h4>
+                        <p style="font-size: 1.2em;">因為列表有三個 $\text{VPN}$，我們確定這個頁面是**共享資源**。若要修改，必須進行複製。</p>
+                    </div>
+                `;
+                 resultDiv.textContent = stepData[4].text;
+            }
+
+        }
+
+
+        // ====================== 初始化執行 (Execution) ======================
+        document.addEventListener('DOMContentLoaded', () => {
+             setLanguage('zh'); // Initialize language
+        });
+
+
+    </script>
+
+</body>
+</html>

@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demand Paging & Hit Ratio</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 900px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        h1 { margin: 0; font-size: 24px; color: #4db8ff; }
+        
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background-color: #007acc;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            transition: background 0.2s, transform 0.1s;
+        }
+        button:hover { background-color: #005999; }
+        button:active { transform: scale(0.97); }
+        button:disabled { background-color: #444; color: #888; cursor: not-allowed; }
+
+        .animation-container {
+            width: 900px;
+            height: 480px;
+            background-color: #1e1e1e;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+            border: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+            position: relative;
+        }
+
+        /* 計算與儀表板區 */
+        .dashboard {
+            width: 95%;
+            display: flex;
+            justify-content: space-between;
+            background: #252526;
+            padding: 15px 20px;
+            border-radius: 8px;
+            border: 1px solid #444;
+            margin-bottom: 20px;
+        }
+        .stat-box { display: flex; flex-direction: column; align-items: center; width: 30%; }
+        .stat-title { font-size: 14px; color: #aaa; margin-bottom: 5px; text-align: center; }
+        .stat-val { font-size: 28px; font-weight: bold; font-family: monospace; color: #ffeb3b; transition: color 0.3s; }
+        
+        .formula-box {
+            width: 100%;
+            background: #111;
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+            font-family: monospace;
+            font-size: 16px;
+            color: #4db8ff;
+            border: 1px dashed #555;
+            margin-bottom: 20px;
+        }
+
+        /* 硬體動畫區 */
+        .hardware-area {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 90%;
+            flex-grow: 1;
+            position: relative;
+        }
+        
+        .hw-node {
+            width: 120px; height: 100px;
+            border-radius: 8px; display: flex; flex-direction: column; justify-content: center; align-items: center;
+            font-weight: bold; font-size: 18px; position: relative; z-index: 2;
+        }
+        .cpu { background: rgba(244, 67, 54, 0.1); border: 2px solid #f44336; color: #e57373; }
+        .ram { background: rgba(76, 175, 80, 0.1); border: 2px solid #4caf50; color: #81c784; }
+        .disk { background: rgba(156, 39, 176, 0.1); border: 2px solid #9c27b0; color: #ce93d8; }
+
+        /* 路徑線 */
+        .path-line { position: absolute; background: #333; z-index: 1; }
+        .line-ram { height: 4px; width: 200px; left: 140px; top: 50%; transform: translateY(-50%); }
+        .line-disk { height: 4px; width: 300px; left: 340px; top: 50%; transform: translateY(-50%); border-bottom: 2px dashed #555; background: transparent; }
+
+        /* 動畫信號點 */
+        .signal-hit {
+            position: absolute; width: 16px; height: 16px; background: #4caf50; border-radius: 50%; box-shadow: 0 0 15px #4caf50; opacity: 0; z-index: 5; top: 50%; transform: translateY(-50%); left: 100px;
+        }
+        .signal-miss {
+            position: absolute; width: 16px; height: 16px; background: #f44336; border-radius: 50%; box-shadow: 0 0 15px #f44336; opacity: 0; z-index: 5; top: 50%; transform: translateY(-50%); left: 100px;
+        }
+
+        .desc-box {
+            width: 100%;
+            max-width: 860px;
+            background-color: #252526;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 5px solid #ffeb3b;
+            font-size: 17px;
+            line-height: 1.6;
+            min-height: 120px;
+        }
+
+        .controls { margin-top: 25px; display: flex; gap: 15px; }
+        code { background: #000; padding: 2px 6px; border-radius: 4px; color: #ffeb3b; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1 id="title">需求分頁與擊中率 (Hit Ratio) 演繹</h1>
+        <button onclick="toggleLang()" id="langBtn">Switch to English</button>
+    </div>
+
+    <div class="animation-container">
+        
+        <div class="dashboard">
+            <div class="stat-box">
+                <div class="stat-title" id="lbl-hit-rate">擊中率 (Hit Ratio, H)</div>
+                <div class="stat-val" id="val-hit-rate" style="color: #4caf50;">--</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-title" id="lbl-miss-rate">缺頁率 (Fault Rate, 1-H)</div>
+                <div class="stat-val" id="val-miss-rate" style="color: #f44336;">--</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-title" id="lbl-eat">有效存取時間 (EAT)</div>
+                <div class="stat-val" id="val-eat" style="color: #4db8ff;">-- ns</div>
+            </div>
+        </div>
+
+        <div class="formula-box" id="formula-box">
+            EAT = H × 100ns (RAM) + (1 - H) × 25,000,000ns (Disk)
+        </div>
+
+        <div class="hardware-area">
+            <div class="hw-node cpu">CPU</div>
+            
+            <div class="path-line line-ram"></div>
+            <div class="signal-hit" id="dot-hit"></div>
+            
+            <div class="hw-node ram" id="lbl-ram">RAM<br><span style="font-size:12px;color:#fff;">(100 ns)</span></div>
+            
+            <div class="path-line line-disk"></div>
+            <div class="signal-miss" id="dot-miss"></div>
+            
+            <div class="hw-node disk" id="lbl-disk">Disk<br><span style="font-size:12px;color:#fff;">(25,000,000 ns)</span></div>
+        </div>
+
+    </div>
+
+    <div class="desc-box" id="description">
+        請點擊「下一步」開始演繹。
+    </div>
+
+    <div class="controls">
+        <button onclick="prevStep()" id="prevBtn" disabled>上一步</button>
+        <button onclick="nextStep()" id="nextBtn">下一步</button>
+    </div>
+
+    <script>
+        let currentLang = 'zh';
+        let currentStep = 0;
+        const totalSteps = 6;
+
+        // UI 節點
+        const dotHit = document.getElementById('dot-hit');
+        const dotMiss = document.getElementById('dot-miss');
+        const valHit = document.getElementById('val-hit-rate');
+        const valMiss = document.getElementById('val-miss-rate');
+        const valEat = document.getElementById('val-eat');
+        const formulaBox = document.getElementById('formula-box');
+
+        const i18n = {
+            zh: {
+                title: "需求分頁與擊中率 (Hit Ratio) 演繹",
+                langBtn: "Switch to English",
+                prevBtn: "上一步",
+                nextBtn: "下一步",
+                lblHitRate: "擊中率 (Hit Ratio, H)",
+                lblMissRate: "缺頁率 (Fault Rate, 1-H)",
+                lblEat: "有效存取時間 (EAT)",
+                formulaBase: "EAT = H × 100ns (RAM) + (1 - H) × 25,000,000ns (Disk)",
+                steps: [
+                    "<strong>初始狀態：</strong>需求分頁 (Demand Paging) 的精神是「要用到才載入」。這表示 CPU 存取記憶體時，一定會面臨兩種結果：在 RAM 裡找到 (Hit)，或者去硬碟拿 (Fault)。RAM 的速度是 100ns，硬碟是 25,000,000ns。",
+                    "<strong>步驟 1 (Page Hit 擊中)：</strong>分頁剛好在記憶體中。這是一次完美的存取，信號瞬間在 CPU 與 RAM 之間完成傳遞。耗時僅 100 奈秒。",
+                    "<strong>步驟 2 (Page Fault 未擊中)：</strong>分頁不在記憶體中。觸發缺頁中斷，作業系統必須去極度緩慢的硬碟 (Disk) 中把資料搬過來。耗時高達 25,000,000 奈秒。",
+                    "<strong>步驟 3 (擊中率 90%)：</strong>假設我們有 90% 的擊中率，聽起來很高對吧？計算一下：<code>0.9 * 100 + 0.1 * 25,000,000 = 2,500,090 ns</code>。系統平均速度慢了 <strong>25,000 倍</strong>！",
+                    "<strong>步驟 4 (擊中率 99%)：</strong>我們把擊中率提升到 99%。計算：<code>0.99 * 100 + 0.01 * 25,000,000 = 250,099 ns</code>。系統平均速度依然比純 RAM 慢了 <strong>2,500 倍</strong>。這在現實中是無法接受的卡頓。",
+                    "<strong>步驟 5 (擊中率 99.99%)：</strong>要讓虛擬記憶體的效能接近實體記憶體，擊中率必須達到 99.99% 以上。計算：<code>0.9999 * 100 + 0.0001 * 25,000,000 = 2,599 ns</code>。這就是為什麼我們需要強大的 LRU 和工作集演算法來維持極高的擊中率。"
+                ]
+            },
+            en: {
+                title: "Demand Paging & Hit Ratio Animation",
+                langBtn: "切換至中文",
+                prevBtn: "Previous",
+                nextBtn: "Next",
+                lblHitRate: "Hit Ratio (H)",
+                lblMissRate: "Page Fault Rate (1-H)",
+                lblEat: "Effective Access Time (EAT)",
+                formulaBase: "EAT = H × 100ns (RAM) + (1 - H) × 25,000,000ns (Disk)",
+                steps: [
+                    "<strong>Initial State:</strong> Demand Paging means 'load only when needed'. Accesses result in either a Hit (in RAM) or a Fault (from Disk). RAM takes 100ns, Disk takes 25,000,000ns.",
+                    "<strong>Step 1 (Page Hit):</strong> The page is in RAM. A perfect access! The signal bounces instantly between CPU and RAM, taking only 100ns.",
+                    "<strong>Step 2 (Page Fault):</strong> The page is missing. A Page Fault is triggered. The OS must fetch data from the extremely slow Disk, taking 25,000,000ns.",
+                    "<strong>Step 3 (Hit Ratio 90%):</strong> Assume a 90% hit ratio. Sounds good? Let's calculate: <code>0.9 * 100 + 0.1 * 25,000,000 = 2,500,090 ns</code>. The system is <strong>25,000x slower</strong>!",
+                    "<strong>Step 4 (Hit Ratio 99%):</strong> We increase hit ratio to 99%. Calculation: <code>0.99 * 100 + 0.01 * 25,000,000 = 250,099 ns</code>. The system is still <strong>2,500x slower</strong> than pure RAM. This is unacceptably laggy.",
+                    "<strong>Step 5 (Hit Ratio 99.99%):</strong> To make virtual memory feel like physical RAM, the hit ratio must exceed 99.99%. Calculation: <code>0.9999 * 100 + 0.0001 * 25,000,000 = 2,599 ns</code>. This is why powerful algorithms like LRU and Working Set are critical."
+                ]
+            }
+        };
+
+        function runHitAnimation() {
+            dotHit.style.transition = 'none';
+            dotHit.style.left = '120px';
+            dotHit.style.opacity = '1';
+            setTimeout(() => {
+                dotHit.style.transition = 'left 0.2s ease-out';
+                dotHit.style.left = '320px'; // To RAM
+            }, 50);
+            setTimeout(() => { dotHit.style.opacity = '0'; }, 300);
+        }
+
+        function runMissAnimation() {
+            dotMiss.style.transition = 'none';
+            dotMiss.style.left = '120px';
+            dotMiss.style.opacity = '1';
+            
+            setTimeout(() => {
+                dotMiss.style.transition = 'left 0.2s ease-out';
+                dotMiss.style.left = '320px'; // To RAM (Miss)
+            }, 50);
+
+            setTimeout(() => {
+                dotMiss.style.transition = 'left 2s linear'; // Very slow to Disk
+                dotMiss.style.left = '640px'; 
+            }, 300);
+
+            setTimeout(() => { dotMiss.style.opacity = '0'; }, 2400);
+        }
+
+        function updateUI() {
+            document.getElementById('title').innerText = i18n[currentLang].title;
+            document.getElementById('langBtn').innerText = i18n[currentLang].langBtn;
+            document.getElementById('prevBtn').innerText = i18n[currentLang].prevBtn;
+            document.getElementById('nextBtn').innerText = i18n[currentLang].nextBtn;
+            
+            document.getElementById('lbl-hit-rate').innerText = i18n[currentLang].lblHitRate;
+            document.getElementById('lbl-miss-rate').innerText = i18n[currentLang].lblMissRate;
+            document.getElementById('lbl-eat').innerText = i18n[currentLang].lblEat;
+
+            document.getElementById('description').innerHTML = i18n[currentLang].steps[currentStep];
+
+            document.getElementById('prevBtn').disabled = currentStep === 0;
+            document.getElementById('nextBtn').disabled = currentStep === totalSteps - 1;
+
+            // 狀態機控制
+            switch(currentStep) {
+                case 0:
+                    valHit.innerText = "--"; valMiss.innerText = "--"; valEat.innerText = "-- ns";
+                    formulaBox.innerText = i18n[currentLang].formulaBase;
+                    break;
+                case 1:
+                    valHit.innerText = "100%"; valMiss.innerText = "0%"; valEat.innerText = "100 ns";
+                    formulaBox.innerText = "EAT = 1.0 × 100 + 0 × 25,000,000 = 100 ns";
+                    runHitAnimation();
+                    break;
+                case 2:
+                    valHit.innerText = "0%"; valMiss.innerText = "100%"; valEat.innerText = "25,000,000 ns";
+                    formulaBox.innerText = "EAT = 0 × 100 + 1.0 × 25,000,000 = 25,000,000 ns";
+                    runMissAnimation();
+                    break;
+                case 3: // 90%
+                    valHit.innerText = "90%"; valMiss.innerText = "10%"; valEat.innerText = "2,500,090 ns";
+                    valEat.style.color = "#f44336";
+                    formulaBox.innerHTML = "EAT = 0.90 × 100 + 0.10 × 25,000,000 = <span style='color:#f44336;'>2,500,090 ns</span>";
+                    break;
+                case 4: // 99%
+                    valHit.innerText = "99%"; valMiss.innerText = "1%"; valEat.innerText = "250,099 ns";
+                    valEat.style.color = "#ffeb3b";
+                    formulaBox.innerHTML = "EAT = 0.99 × 100 + 0.01 × 25,000,000 = <span style='color:#ffeb3b;'>250,099 ns</span>";
+                    break;
+                case 5: // 99.99%
+                    valHit.innerText = "99.99%"; valMiss.innerText = "0.01%"; valEat.innerText = "2,599 ns";
+                    valEat.style.color = "#4caf50";
+                    formulaBox.innerHTML = "EAT = 0.9999 × 100 + 0.0001 × 25,000,000 = <span style='color:#4caf50;'>2,599 ns</span>";
+                    break;
+            }
+        }
+
+        function toggleLang() {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            updateUI();
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps - 1) {
+                currentStep++;
+                updateUI();
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 0) {
+                currentStep--;
+                updateUI();
+            }
+        }
+
+        // 初始載入
+        updateUI();
+    </script>
+</body>
+</html>

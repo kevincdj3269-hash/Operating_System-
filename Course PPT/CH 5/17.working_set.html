@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Working Set Model Animation</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 950px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        h1 { margin: 0; font-size: 24px; color: #ff9800; }
+        
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background-color: #007acc;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            transition: background 0.2s, transform 0.1s;
+            margin: 0 5px;
+        }
+        button:hover { background-color: #005999; }
+        button:active { transform: scale(0.97); }
+        button:disabled { background-color: #444; color: #888; cursor: not-allowed; }
+
+        .animation-container {
+            width: 950px;
+            background-color: #1e1e1e;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+            border: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        /* 參數設定面板 */
+        .param-panel {
+            display: flex;
+            justify-content: space-between;
+            width: 90%;
+            background: #252526;
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: 1px dashed #555;
+            margin-bottom: 25px;
+            font-size: 16px;
+        }
+        .param-highlight { color: #ff9800; font-weight: bold; font-family: monospace; font-size: 18px;}
+
+        /* 序列與視窗區塊 */
+        .sequence-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 4px;
+            width: 100%;
+            margin-bottom: 30px;
+            position: relative;
+        }
+        
+        .seq-item {
+            width: 24px;
+            height: 32px;
+            background: #2d2d2d;
+            border: 1px solid #555;
+            border-radius: 4px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            color: #aaa;
+            transition: all 0.3s ease;
+        }
+
+        /* 工作集視窗內的樣式 */
+        .seq-item.in-window {
+            background: rgba(255, 152, 0, 0.2);
+            border-color: #ff9800;
+            color: #fff;
+            box-shadow: 0 0 10px rgba(255, 152, 0, 0.3);
+            transform: scale(1.1);
+            z-index: 2;
+        }
+        /* 當前時間點 t 的樣式 */
+        .seq-item.current-t {
+            background: #ff9800;
+            color: #000;
+            box-shadow: 0 0 15px #ff9800;
+            border-color: #e65100;
+        }
+
+        /* 工作集顯示面板 */
+        .ws-display-area {
+            display: flex;
+            width: 90%;
+            gap: 20px;
+        }
+        
+        .ws-panel {
+            flex: 1;
+            background: #252526;
+            border: 2px solid #444;
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+        }
+        .ws-title {
+            font-size: 16px;
+            color: #aaa;
+            margin-bottom: 10px;
+        }
+        .ws-value {
+            font-family: monospace;
+            font-size: 32px;
+            color: #4db8ff;
+            font-weight: bold;
+        }
+        .wss-value {
+            font-size: 42px;
+            font-weight: bold;
+        }
+
+        /* WSS 顏色動態變化 (反映局部性) */
+        .wss-low { color: #4caf50; text-shadow: 0 0 10px rgba(76,175,80,0.5); } /* 高局部性，安全 */
+        .wss-mid { color: #ffeb3b; text-shadow: 0 0 10px rgba(255,235,59,0.5); }
+        .wss-high { color: #f44336; text-shadow: 0 0 10px rgba(244,67,54,0.5); } /* 低局部性，危險 */
+
+        .desc-box {
+            width: 100%;
+            max-width: 910px;
+            background-color: #252526;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 5px solid #ff9800;
+            font-size: 17px;
+            line-height: 1.6;
+            min-height: 100px;
+        }
+
+        .controls { margin-top: 25px; display: flex; gap: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1 id="title">工作集合模型 (Working Set Model)</h1>
+        <button onclick="toggleLang()" id="langBtn">Switch to English</button>
+    </div>
+
+    <div class="animation-container">
+        
+        <div class="param-panel">
+            <div id="lbl-param-t">目前時間點 (t) = <span class="param-highlight" id="val-t">0</span></div>
+            <div id="lbl-param-delta">工作集視窗大小 (Δ) = <span class="param-highlight">5</span></div>
+        </div>
+
+        <div style="width:100%; text-align:left; color:#aaa; font-size:14px; margin-bottom:10px; padding-left:20px;" id="lbl-seq">分頁存取序列 (Reference String)：</div>
+        
+        <div class="sequence-container" id="seq-grid">
+            </div>
+
+        <div class="ws-display-area">
+            <div class="ws-panel" id="panel-ws">
+                <div class="ws-title" id="lbl-ws">目前工作集合 WS(t, Δ)</div>
+                <div class="ws-value" id="val-ws">{ }</div>
+            </div>
+            <div class="ws-panel" id="panel-wss">
+                <div class="ws-title" id="lbl-wss">工作集大小 WSS</div>
+                <div class="wss-value" id="val-wss">0</div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="desc-box" id="description">
+        請點擊「下一步」開始推移時間 t，觀察工作集如何動態變化。
+    </div>
+
+    <div class="controls">
+        <button onclick="resetApp()" id="resetBtn">重置 (Reset)</button>
+        <button onclick="prevStep()" id="prevBtn" disabled>上一步</button>
+        <button onclick="nextStep()" id="nextBtn">下一步</button>
+    </div>
+
+    <script>
+        const sequence = [2, 6, 1, 5, 7, 7, 7, 7, 5, 1, 6, 2, 3, 4, 1, 2, 3, 4, 4, 4, 3, 4, 3, 4, 4, 4, 1, 2, 3, 4, 5, 6, 7];
+        const delta = 5;
+        let currentLang = 'zh';
+        let currentStep = -1; // -1 表示尚未開始
+        const totalSteps = sequence.length;
+
+        const seqGrid = document.getElementById('seq-grid');
+        let seqElements = [];
+
+        // 初始化序列 UI
+        function initSequence() {
+            seqGrid.innerHTML = '';
+            seqElements = [];
+            for (let i = 0; i < sequence.length; i++) {
+                let el = document.createElement('div');
+                el.className = 'seq-item';
+                el.innerText = sequence[i];
+                seqGrid.appendChild(el);
+                seqElements.push(el);
+            }
+        }
+        initSequence();
+
+        const i18n = {
+            zh: {
+                title: "工作集合模型 (Working Set Model)",
+                langBtn: "Switch to English",
+                prevBtn: "上一步",
+                nextBtn: "下一步",
+                resetBtn: "重置 (Reset)",
+                lblParamT: "目前時間點 (t) = ",
+                lblParamDelta: "工作集視窗大小 (Δ) = ",
+                lblSeq: "分頁存取序列 (Reference String)：",
+                lblWs: "目前工作集合 WS(t, Δ)",
+                lblWss: "工作集大小 (真正需要的頁框數) WSS",
+                descStart: "<strong>初始狀態：</strong>我們設定工作集視窗 $\\Delta = 5$。這代表作業系統會觀察「包含當前時間點，往回推算共 5 次」的記憶體存取紀錄，來推斷程式目前真正需要的頁框數量。請點擊「下一步」。",
+                descAnalysis: "<strong>系統狀態分析：</strong>"
+            },
+            en: {
+                title: "Working Set Model Animation",
+                langBtn: "切換至中文",
+                prevBtn: "Previous",
+                nextBtn: "Next",
+                resetBtn: "Reset",
+                lblParamT: "Current Time (t) = ",
+                lblParamDelta: "Working Set Window (Δ) = ",
+                lblSeq: "Reference String (Memory Access):",
+                lblWs: "Current Working Set WS(t, Δ)",
+                lblWss: "Working Set Size (Required Frames) WSS",
+                descStart: "<strong>Initial State:</strong> We set the Working Set Window $\\Delta = 5$. The OS observes the 'current and previous 4' (total 5) access records to estimate how many frames the program truly needs right now. Click 'Next'.",
+                descAnalysis: "<strong>System Analysis:</strong>"
+            }
+        };
+
+        function updateUI() {
+            // 文字切換
+            document.getElementById('title').innerText = i18n[currentLang].title;
+            document.getElementById('langBtn').innerText = i18n[currentLang].langBtn;
+            document.getElementById('prevBtn').innerText = i18n[currentLang].prevBtn;
+            document.getElementById('nextBtn').innerText = i18n[currentLang].nextBtn;
+            document.getElementById('resetBtn').innerText = i18n[currentLang].resetBtn;
+            
+            document.getElementById('lbl-param-t').innerHTML = `${i18n[currentLang].lblParamT}<span class="param-highlight" id="val-t">${Math.max(0, currentStep + 1)}</span>`;
+            document.getElementById('lbl-param-delta').innerHTML = `${i18n[currentLang].lblParamDelta}<span class="param-highlight">5</span>`;
+            
+            document.getElementById('lbl-seq').innerText = i18n[currentLang].lblSeq;
+            document.getElementById('lbl-ws').innerText = i18n[currentLang].lblWs;
+            document.getElementById('lbl-wss').innerText = i18n[currentLang].lblWss;
+
+            document.getElementById('prevBtn').disabled = currentStep === -1;
+            document.getElementById('nextBtn').disabled = currentStep === totalSteps - 1;
+
+            if (currentStep === -1) {
+                document.getElementById('description').innerHTML = i18n[currentLang].descStart;
+                document.getElementById('val-ws').innerText = "{ }";
+                document.getElementById('val-wss').innerText = "0";
+                document.getElementById('val-wss').className = 'wss-value';
+                
+                seqElements.forEach(el => {
+                    el.classList.remove('in-window', 'current-t');
+                });
+                return;
+            }
+
+            // 計算工作集視窗邊界
+            let startIdx = Math.max(0, currentStep - delta + 1);
+            let endIdx = currentStep;
+
+            // 提取工作集合
+            let windowItems = [];
+            for (let i = startIdx; i <= endIdx; i++) {
+                windowItems.push(sequence[i]);
+            }
+            
+            let uniqueSet = [...new Set(windowItems)].sort((a,b) => a-b);
+            let wss = uniqueSet.length;
+
+            // 更新 UI 數字
+            document.getElementById('val-ws').innerText = "{ " + uniqueSet.join(", ") + " }";
+            const wssEl = document.getElementById('val-wss');
+            wssEl.innerText = wss;
+
+            // 視覺更新：視窗滑動
+            seqElements.forEach((el, index) => {
+                el.classList.remove('in-window', 'current-t');
+                if (index >= startIdx && index <= endIdx) {
+                    el.classList.add('in-window');
+                    if (index === currentStep) {
+                        el.classList.add('current-t');
+                    }
+                }
+            });
+
+            // WSS 顏色與狀態分析
+            let stateDescZh = "";
+            let stateDescEn = "";
+            
+            if (wss <= 2) {
+                wssEl.className = 'wss-value wss-low';
+                stateDescZh = "程式具有<strong>極高的局部性 (High Locality)</strong>！它一直在重複存取相同的少數分頁。此時 WSS 很小，作業系統可以放心地回收它多餘的頁框給別人用。";
+                stateDescEn = "The program exhibits <strong>High Locality</strong>! It repeatedly accesses the same few pages. WSS is small, allowing the OS to safely reclaim its extra frames for others.";
+            } else if (wss === 3) {
+                wssEl.className = 'wss-value wss-mid';
+                stateDescZh = "程式的局部性屬於中等。它需要穩定的 3 個頁框來維持目前的運作。";
+                stateDescEn = "The program has moderate locality. It needs a steady 3 frames to maintain current operations.";
+            } else {
+                wssEl.className = 'wss-value wss-high';
+                stateDescZh = "程式正處於<strong>局部性轉換 (Changing Locality)</strong> 或低局部性狀態！它正大範圍地存取不同的分頁。此時 WSS 飆高，系統必須分配更多頁框給它，否則將引發 Thrashing！";
+                stateDescEn = "The program is in <strong>Changing Locality</strong> or low locality state! It accesses many different pages. WSS spikes; the system MUST allocate more frames to prevent Thrashing!";
+            }
+
+            document.getElementById('description').innerHTML = 
+                `${i18n[currentLang].descAnalysis}<br>${currentLang === 'zh' ? stateDescZh : stateDescEn}`;
+        }
+
+        function toggleLang() {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            updateUI();
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps - 1) {
+                currentStep++;
+                updateUI();
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > -1) {
+                currentStep--;
+                updateUI();
+            }
+        }
+
+        function resetApp() {
+            currentStep = -1;
+            updateUI();
+        }
+
+        // 初始載入
+        updateUI();
+    </script>
+</body>
+</html>

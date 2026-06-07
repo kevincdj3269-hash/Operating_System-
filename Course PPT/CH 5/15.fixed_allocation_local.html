@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fixed Allocation & Local Replacement</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 850px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        h1 { margin: 0; font-size: 24px; color: #4db8ff; }
+        
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background-color: #007acc;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            transition: background 0.2s, transform 0.1s;
+        }
+        button:hover { background-color: #005999; }
+        button:active { transform: scale(0.97); }
+        button:disabled { background-color: #444; color: #888; cursor: not-allowed; }
+
+        .animation-container {
+            width: 850px;
+            height: 480px;
+            background-color: #1e1e1e;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+            border: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+            position: relative;
+        }
+
+        /* 系統事件提示 */
+        .sys-status {
+            width: 90%;
+            background: #252526;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #444;
+            font-size: 18px;
+            font-weight: bold;
+            color: #ffeb3b;
+            text-align: center;
+            margin-bottom: 25px;
+            transition: all 0.3s;
+        }
+
+        /* 實體記憶體 RAM 區塊 */
+        .ram-wrapper {
+            display: flex;
+            width: 90%;
+            gap: 20px;
+            position: relative;
+        }
+
+        /* 中間不可跨越的牆 */
+        .isolation-wall {
+            width: 10px;
+            background: repeating-linear-gradient(
+                45deg,
+                #f44336,
+                #f44336 10px,
+                #333 10px,
+                #333 20px
+            );
+            border: 2px solid #b71c1c;
+            border-radius: 4px;
+            box-shadow: 0 0 15px rgba(244, 67, 54, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .wall-label {
+            writing-mode: vertical-rl;
+            color: white;
+            font-size: 14px;
+            font-weight: bold;
+            background: rgba(0,0,0,0.8);
+            padding: 10px 0;
+            border-radius: 4px;
+        }
+
+        .process-region {
+            flex: 1;
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+        }
+        .region-a { border: 3px dashed #4caf50; background: rgba(76, 175, 80, 0.05); }
+        .region-b { border: 3px dashed #9c27b0; background: rgba(156, 39, 176, 0.05); }
+
+        .region-title {
+            position: absolute;
+            top: -15px;
+            background: #1e1e1e;
+            padding: 0 15px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .region-a .region-title { color: #4caf50; }
+        .region-b .region-title { color: #ce93d8; }
+
+        .frames-grid {
+            display: flex;
+            gap: 15px;
+            margin-top: 10px;
+        }
+        
+        .frame {
+            width: 80px;
+            height: 100px;
+            background: #252526;
+            border: 2px solid #555;
+            border-radius: 6px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        .page {
+            width: 70px;
+            height: 90px;
+            border-radius: 4px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            position: absolute;
+            opacity: 0;
+            transform: translateY(-30px) scale(0.8);
+        }
+        .page.visible { opacity: 1; transform: translateY(0) scale(1); }
+        
+        .page-a { background: linear-gradient(135deg, #4caf50, #2e7d32); }
+        .page-b { background: linear-gradient(135deg, #9c27b0, #6a1b9a); }
+
+        /* 動畫特效 */
+        .highlight-fault {
+            animation: pulse-red 0.6s 2;
+        }
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 rgba(244,67,54,0); border-color: #555; }
+            50% { box-shadow: 0 0 20px rgba(244,67,54,0.8); border-color: #f44336; }
+            100% { box-shadow: 0 0 0 rgba(244,67,54,0); border-color: #555; }
+        }
+
+        .desc-box {
+            width: 100%;
+            max-width: 810px;
+            background-color: #252526;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 5px solid #ffeb3b;
+            font-size: 17px;
+            line-height: 1.6;
+            min-height: 100px;
+        }
+
+        .controls { margin-top: 25px; display: flex; gap: 15px; }
+        code { background: #000; padding: 2px 6px; border-radius: 4px; color: #ffeb3b; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1 id="title">頁面替換範圍：固定配置 + 區域置換</h1>
+        <button onclick="toggleLang()" id="langBtn">Switch to English</button>
+    </div>
+
+    <div class="animation-container">
+        
+        <div class="sys-status" id="sys-status">系統就緒 (System Ready)</div>
+
+        <div class="ram-wrapper">
+            <div class="process-region region-a">
+                <div class="region-title" id="title-a">App A (配額: 3 頁框)</div>
+                <div class="frames-grid" id="grid-a">
+                    <div class="frame" id="f-a-0"><div class="page page-a" id="p-a-0">A1</div></div>
+                    <div class="frame" id="f-a-1"><div class="page page-a" id="p-a-1">A2</div></div>
+                    <div class="frame" id="f-a-2"><div class="page page-a" id="p-a-2"></div></div>
+                </div>
+            </div>
+
+            <div class="isolation-wall">
+                <div class="wall-label" id="lbl-wall">絕對隔離牆</div>
+            </div>
+
+            <div class="process-region region-b">
+                <div class="region-title" id="title-b">App B (配額: 3 頁框)</div>
+                <div class="frames-grid" id="grid-b">
+                    <div class="frame" id="f-b-0"><div class="page page-b" id="p-b-0">B1</div></div>
+                    <div class="frame" id="f-b-1"><div class="page page-b" id="p-b-1">B2</div></div>
+                    <div class="frame" id="f-b-2"><div class="page page-b" id="p-b-2">B3</div></div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="desc-box" id="description">
+        請點擊「下一步」開始演繹區域置換的隔離特性。
+    </div>
+
+    <div class="controls">
+        <button onclick="prevStep()" id="prevBtn" disabled>上一步</button>
+        <button onclick="nextStep()" id="nextBtn">下一步</button>
+    </div>
+
+    <script>
+        let currentLang = 'zh';
+        let currentStep = 0;
+        const totalSteps = 5;
+
+        // UI 節點
+        const pA0 = document.getElementById('p-a-0');
+        const pA1 = document.getElementById('p-a-1');
+        const pA2 = document.getElementById('p-a-2');
+        
+        const pB0 = document.getElementById('p-b-0');
+        const pB1 = document.getElementById('p-b-1');
+        const pB2 = document.getElementById('p-b-2');
+
+        const fA = [document.getElementById('f-a-0'), document.getElementById('f-a-1'), document.getElementById('f-a-2')];
+        const fB = [document.getElementById('f-b-0'), document.getElementById('f-b-1'), document.getElementById('f-b-2')];
+        
+        const sysStatus = document.getElementById('sys-status');
+
+        const i18n = {
+            zh: {
+                title: "頁面替換範圍：固定配置 + 區域置換",
+                langBtn: "Switch to English",
+                prevBtn: "上一步",
+                nextBtn: "下一步",
+                titleA: "App A (固定配額: 3 頁框)",
+                titleB: "App B (固定配額: 3 頁框)",
+                lblWall: "絕對隔離牆",
+                status: [
+                    "系統就緒：App A 佔用 2 頁，App B 滿載 3 頁",
+                    "CPU 請求 A3：App A 還有空位，直接載入！",
+                    "CPU 請求 B4：App B 空間不足，發生缺頁錯誤！",
+                    "區域置換 (Local Replacement)：B 只能踢掉自己的 B1",
+                    "效能隔離：程式互不影響，但資源可能浪費"
+                ],
+                steps: [
+                    "<strong>初始狀態：</strong>作業系統規定 App A 與 App B 各自只能擁有 3 個頁框 (固定配置)。目前 App A 用了 2 個頁框，還有 1 個空位。App B 則 3 個頁框全滿。中間的隔離牆代表它們無法存取對方的區域。",
+                    "<strong>步驟 1：</strong>CPU 需要讀取 <code>A3</code>。App A 發生缺頁。因為 App A 的配額中還有 1 個空頁框，所以直接將 <code>A3</code> 載入即可。此時 App A 的 3 個頁框也滿了。",
+                    "<strong>步驟 2：</strong>CPU 需要讀取 <code>B4</code>。App B 發生缺頁錯誤！但是 App B 的 3 個配額已經全滿了。<strong>雖然剛才 App A 有空位 (假設回到上一步)，App B 也絕對不能去佔用！</strong>這就是固定配置的死板之處。",
+                    "<strong>步驟 3 (區域置換)：</strong>App B 被迫執行「區域置換 (Local Replacement)」。它必須從<strong>自己專屬的 3 個頁框</strong>中挑出一個犧牲者 (例如最老的 <code>B1</code>)，將其踢出，換成新的 <code>B4</code>。",
+                    "<strong>總結：</strong>固定配置與區域置換提供了極佳的<strong>效能隔離性</strong>。如果 App B 是一個寫得很差、瘋狂缺頁的程式，它只會不斷地在自己的 3 個頁框裡輾轉，絕不會去波及 App A 的記憶體。但代價就是犧牲了記憶體整體的調度彈性。"
+                ]
+            },
+            en: {
+                title: "Replacement Scope: Fixed + Local Replacement",
+                langBtn: "切換至中文",
+                prevBtn: "Previous",
+                nextBtn: "Next",
+                titleA: "App A (Fixed Quota: 3 Frames)",
+                titleB: "App B (Fixed Quota: 3 Frames)",
+                lblWall: "STRICT ISOLATION",
+                status: [
+                    "System Ready: A uses 2 frames, B is full with 3",
+                    "CPU requests A3: A has free space, loads directly!",
+                    "CPU requests B4: B is out of space, Page Fault!",
+                    "Local Replacement: B MUST evict its own page (B1)",
+                    "Isolation: Apps don't affect each other, but wastes resources"
+                ],
+                steps: [
+                    "<strong>Initial State:</strong> The OS restricts App A and App B to exactly 3 frames each (Fixed Allocation). App A currently uses 2 frames with 1 empty. App B is fully occupying its 3 frames. The wall represents strict isolation.",
+                    "<strong>Step 1:</strong> CPU requests <code>A3</code>. App A faults. Since App A has 1 empty frame in its quota, <code>A3</code> is loaded directly. Now App A is also full.",
+                    "<strong>Step 2:</strong> CPU requests <code>B4</code>. App B suffers a Page Fault! However, its 3 frames are full. <strong>Even if App A had empty frames, App B is FORBIDDEN from taking them!</strong> This highlights the rigidity of Fixed Allocation.",
+                    "<strong>Step 3 (Local Replacement):</strong> App B is forced to perform 'Local Replacement'. It must pick a victim exclusively from <strong>its own 3 frames</strong> (e.g., evicting <code>B1</code>) to make room for the incoming <code>B4</code>.",
+                    "<strong>Summary:</strong> Fixed allocation + Local replacement provides excellent <strong>performance isolation</strong>. If App B is poorly written and thrashes, it will only swap within its own 3 frames, never stealing App A's memory. The trade-off is poor overall memory utilization flexibility."
+                ]
+            }
+        };
+
+        function resetUI() {
+            // 清除動畫 class
+            fB.forEach(f => f.classList.remove('highlight-fault'));
+            sysStatus.style.color = '#ffeb3b';
+            sysStatus.style.borderColor = '#444';
+        }
+
+        function updateUI() {
+            // 文字切換
+            document.getElementById('title').innerText = i18n[currentLang].title;
+            document.getElementById('langBtn').innerText = i18n[currentLang].langBtn;
+            document.getElementById('prevBtn').innerText = i18n[currentLang].prevBtn;
+            document.getElementById('nextBtn').innerText = i18n[currentLang].nextBtn;
+            
+            document.getElementById('title-a').innerText = i18n[currentLang].titleA;
+            document.getElementById('title-b').innerText = i18n[currentLang].titleB;
+            document.getElementById('lbl-wall').innerText = i18n[currentLang].lblWall;
+            
+            sysStatus.innerText = i18n[currentLang].status[currentStep];
+            document.getElementById('description').innerHTML = i18n[currentLang].steps[currentStep];
+
+            document.getElementById('prevBtn').disabled = currentStep === 0;
+            document.getElementById('nextBtn').disabled = currentStep === totalSteps - 1;
+
+            resetUI();
+
+            // 狀態機控制視覺
+            switch(currentStep) {
+                case 0:
+                    pA0.classList.add('visible'); pA0.innerText = 'A1';
+                    pA1.classList.add('visible'); pA1.innerText = 'A2';
+                    pA2.classList.remove('visible');
+                    
+                    pB0.classList.add('visible'); pB0.innerText = 'B1';
+                    pB1.classList.add('visible'); pB1.innerText = 'B2';
+                    pB2.classList.add('visible'); pB2.innerText = 'B3';
+                    break;
+                case 1:
+                    pA2.innerText = 'A3';
+                    pA2.classList.add('visible');
+                    break;
+                case 2:
+                    sysStatus.style.color = '#f44336';
+                    sysStatus.style.borderColor = '#f44336';
+                    
+                    // 觸發 App B 的缺頁震動特效 (B區塊全閃爍)
+                    fB.forEach(f => f.classList.add('highlight-fault'));
+                    
+                    // B 維持原狀
+                    pB0.innerText = 'B1';
+                    break;
+                case 3:
+                case 4: // 總結畫面保持結果
+                    pA2.classList.add('visible');
+                    
+                    sysStatus.style.color = '#4caf50';
+                    sysStatus.style.borderColor = '#4caf50';
+
+                    // B1 被置換成 B4
+                    pB0.style.transform = 'scale(0) translateY(-50px)';
+                    pB0.style.opacity = '0';
+                    setTimeout(() => {
+                        pB0.innerText = 'B4';
+                        pB0.style.transform = 'scale(1) translateY(0)';
+                        pB0.style.opacity = '1';
+                        pB0.style.background = 'linear-gradient(135deg, #f44336, #c62828)'; // 凸顯是新換進來的
+                    }, 400);
+                    break;
+            }
+
+            // 確保非置換步驟時顏色正常
+            if (currentStep < 3) {
+                pB0.style.background = 'linear-gradient(135deg, #9c27b0, #6a1b9a)';
+                pB0.style.transform = 'scale(1) translateY(0)';
+                pB0.style.opacity = '1';
+            }
+        }
+
+        function toggleLang() {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            updateUI();
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps - 1) {
+                currentStep++;
+                updateUI();
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 0) {
+                currentStep--;
+                updateUI();
+            }
+        }
+
+        // 初始載入
+        updateUI();
+    </script>
+</body>
+</html>

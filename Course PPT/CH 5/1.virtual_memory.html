@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Memory Animation</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1e1e1e;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 800px;
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+            background-color: #007acc;
+            color: white;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        button:hover { background-color: #005999; }
+        button:disabled { background-color: #555; cursor: not-allowed; }
+
+        .animation-container {
+            position: relative;
+            width: 800px;
+            height: 400px;
+            background-color: #2d2d2d;
+            border-radius: 10px;
+            border: 2px solid #3e3e3e;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        
+        /* 系統元件 */
+        .component {
+            position: absolute;
+            padding: 15px;
+            border-radius: 8px;
+            font-weight: bold;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .cpu { top: 150px; left: 50px; width: 80px; height: 80px; background-color: #d32f2f; }
+        .mmu { top: 155px; left: 190px; width: 70px; height: 70px; background-color: #fbc02d; color: #000; }
+        .page-table { top: 50px; left: 350px; width: 100px; height: 120px; background-color: #1976d2; }
+        .ram { top: 50px; left: 600px; width: 120px; height: 120px; background-color: #388e3c; }
+        .disk { top: 250px; left: 450px; width: 140px; height: 100px; background-color: #7b1fa2; border-radius: 50% / 20%; }
+
+        /* 動畫信號點 */
+        .signal {
+            position: absolute;
+            width: 15px;
+            height: 15px;
+            background-color: #00e5ff;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #00e5ff;
+            opacity: 0;
+            transition: all 1s ease-in-out;
+        }
+
+        .desc-box {
+            width: 100%;
+            max-width: 800px;
+            background-color: #333;
+            padding: 20px;
+            border-radius: 8px;
+            font-size: 18px;
+            line-height: 1.5;
+            min-height: 80px;
+        }
+
+        .controls { margin-top: 20px; display: flex; gap: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1 id="title">虛擬記憶體運作演示</h1>
+        <button onclick="toggleLang()" id="langBtn">Switch to English</button>
+    </div>
+
+    <div class="animation-container">
+        <div class="component cpu">CPU</div>
+        <div class="component mmu">MMU / TLB</div>
+        <div class="component page-table" id="label-pt">Page<br>Table</div>
+        <div class="component ram" id="label-ram">Physical<br>Memory (RAM)</div>
+        <div class="component disk" id="label-disk">Disk Storage<br>(Swap Space)</div>
+
+        <div class="signal" id="dot"></div>
+    </div>
+
+    <div class="desc-box" id="description">
+        請點擊「下一步」開始演繹虛擬記憶體的分頁機制。
+    </div>
+
+    <div class="controls">
+        <button onclick="prevStep()" id="prevBtn" disabled>上一步</button>
+        <button onclick="nextStep()" id="nextBtn">下一步</button>
+    </div>
+
+    <script>
+        let currentLang = 'zh';
+        let currentStep = 0;
+        const totalSteps = 5;
+
+        // 語系字典
+        const i18n = {
+            zh: {
+                title: "虛擬記憶體運作演示",
+                langBtn: "Switch to English",
+                prevBtn: "上一步",
+                nextBtn: "下一步",
+                pt: "分頁表<br>(Page Table)",
+                ram: "實體記憶體<br>(RAM)",
+                disk: "硬碟<br>(Swap Space)",
+                steps: [
+                    "請點擊「下一步」開始演繹虛擬記憶體的分頁機制。",
+                    "<strong>步驟 1：發出虛擬位址</strong><br>CPU 需要讀取資料，發出一個「虛擬位址」給記憶體管理單元 (MMU)。",
+                    "<strong>步驟 2：查詢分頁表 (TLB/Page Table)</strong><br>MMU 將虛擬位址轉換為實體位址。它會先查 TLB，若未命中則查詢記憶體中的分頁表。此時發現該分頁的 Valid Bit 為 0 (不在 RAM 中)。",
+                    "<strong>步驟 3：觸發缺頁中斷 (Page Fault)</strong><br>因為資料不在實體記憶體中，作業系統介入，準備從較慢的硬碟 (Disk) 中把資料搬出來。",
+                    "<strong>步驟 4：頁面置換 (Swapping)</strong><br>作業系統從硬碟讀取所需的資料區塊 (Page)，並將其載入到實體記憶體 (RAM) 的空閒框架 (Frame) 中。",
+                    "<strong>步驟 5：更新並重試</strong><br>作業系統更新分頁表，標記該資料已在 RAM 中。CPU 重新執行指令，這次成功從 RAM 獲取資料！"
+                ]
+            },
+            en: {
+                title: "Virtual Memory Animation",
+                langBtn: "切換至中文",
+                prevBtn: "Previous",
+                nextBtn: "Next",
+                pt: "Page<br>Table",
+                ram: "Physical<br>Memory (RAM)",
+                disk: "Disk<br>(Swap Space)",
+                steps: [
+                    "Click 'Next' to start the virtual memory paging simulation.",
+                    "<strong>Step 1: Issue Virtual Address</strong><br>The CPU needs data and sends a 'Virtual Address' to the Memory Management Unit (MMU).",
+                    "<strong>Step 2: Check Page Table (TLB/Page Table)</strong><br>The MMU translates the address. It checks the TLB, then the Page Table. It finds the Valid Bit is 0 (data is not in RAM).",
+                    "<strong>Step 3: Page Fault Triggered</strong><br>Since the data is missing from RAM, the OS intercepts with a Page Fault, preparing to fetch data from the slower Disk.",
+                    "<strong>Step 4: Page Swapping</strong><br>The OS fetches the required page from the Disk and loads it into an available frame in the Physical Memory (RAM).",
+                    "<strong>Step 5: Update & Retry</strong><br>The OS updates the Page Table to show the data is now in RAM. The CPU retries the instruction and successfully accesses the data from RAM!"
+                ]
+            }
+        };
+
+        const dot = document.getElementById('dot');
+
+        function updateUI() {
+            // 更新文字
+            document.getElementById('title').innerText = i18n[currentLang].title;
+            document.getElementById('langBtn').innerText = i18n[currentLang].langBtn;
+            document.getElementById('prevBtn').innerText = i18n[currentLang].prevBtn;
+            document.getElementById('nextBtn').innerText = i18n[currentLang].nextBtn;
+            document.getElementById('description').innerHTML = i18n[currentLang].steps[currentStep];
+            
+            document.getElementById('label-pt').innerHTML = i18n[currentLang].pt;
+            document.getElementById('label-ram').innerHTML = i18n[currentLang].ram;
+            document.getElementById('label-disk').innerHTML = i18n[currentLang].disk;
+
+            // 更新按鈕狀態
+            document.getElementById('prevBtn').disabled = currentStep === 0;
+            document.getElementById('nextBtn').disabled = currentStep === totalSteps;
+
+            // 執行 CSS 動畫路徑
+            switch(currentStep) {
+                case 0: // 初始隱藏
+                    dot.style.opacity = '0';
+                    dot.style.top = '185px';
+                    dot.style.left = '130px';
+                    break;
+                case 1: // CPU -> MMU
+                    dot.style.opacity = '1';
+                    dot.style.top = '185px';
+                    dot.style.left = '130px';
+                    setTimeout(() => { dot.style.left = '180px'; }, 50);
+                    break;
+                case 2: // MMU -> Page Table
+                    dot.style.opacity = '1';
+                    dot.style.top = '185px';
+                    dot.style.left = '260px';
+                    setTimeout(() => { 
+                        dot.style.top = '100px'; 
+                        dot.style.left = '340px'; 
+                    }, 50);
+                    break;
+                case 3: // Page Table -> Disk (Page Fault)
+                    dot.style.opacity = '1';
+                    dot.style.top = '160px';
+                    dot.style.left = '390px';
+                    setTimeout(() => { 
+                        dot.style.top = '290px'; 
+                        dot.style.left = '440px'; 
+                    }, 50);
+                    break;
+                case 4: // Disk -> RAM (Swapping)
+                    dot.style.opacity = '1';
+                    dot.style.top = '290px';
+                    dot.style.left = '590px';
+                    setTimeout(() => { 
+                        dot.style.top = '160px'; 
+                        dot.style.left = '640px'; 
+                    }, 50);
+                    break;
+                case 5: // RAM -> CPU (Success)
+                    dot.style.opacity = '1';
+                    dot.style.top = '100px';
+                    dot.style.left = '590px';
+                    setTimeout(() => { 
+                        dot.style.top = '180px'; 
+                        dot.style.left = '140px'; 
+                    }, 50);
+                    break;
+            }
+        }
+
+        function toggleLang() {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            updateUI();
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps) {
+                currentStep++;
+                updateUI();
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 0) {
+                currentStep--;
+                updateUI();
+            }
+        }
+
+        // 初始化
+        updateUI();
+    </script>
+</body>
+</html>

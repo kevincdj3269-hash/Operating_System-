@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LRU Page Replacement Algorithm</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 850px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        h1 { margin: 0; font-size: 24px; color: #4db8ff; }
+        
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background-color: #007acc;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            transition: background 0.2s, transform 0.1s;
+        }
+        button:hover { background-color: #005999; }
+        button:active { transform: scale(0.97); }
+        button:disabled { background-color: #444; color: #888; cursor: not-allowed; }
+
+        .animation-container {
+            width: 850px;
+            height: 420px;
+            background-color: #1e1e1e;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+            border: 1px solid #333;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding-top: 20px;
+        }
+
+        /* 系統時鐘 */
+        .system-clock {
+            position: absolute;
+            top: 20px;
+            left: 30px;
+            background: #2d2d2d;
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: 1px solid #555;
+            font-family: monospace;
+            font-size: 16px;
+            color: #ffeb3b;
+        }
+
+        /* 參考字串區 */
+        .ref-string-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 40px;
+            margin-top: 20px;
+        }
+        .ref-box {
+            width: 40px;
+            height: 40px;
+            background-color: #2d2d2d;
+            border: 2px solid #555;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+        .ref-box.active {
+            border-color: #ffeb3b;
+            background-color: rgba(255, 235, 59, 0.2);
+            box-shadow: 0 0 15px rgba(255, 235, 59, 0.5);
+            transform: scale(1.1);
+        }
+
+        /* 實體記憶體區 (RAM) */
+        .ram-container {
+            display: flex;
+            gap: 25px;
+            position: relative;
+        }
+        .frame {
+            width: 90px;
+            height: 110px;
+            border: 3px dashed #4caf50;
+            border-radius: 8px;
+            background-color: rgba(76, 175, 80, 0.05);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        .page {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #2196f3, #1565c0);
+            border-radius: 4px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+            opacity: 0;
+            transform: translateY(-50px);
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .page.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .page-id { font-size: 28px; font-weight: bold; }
+        .page-time { font-size: 12px; color: #bbdefb; margin-top: 5px; background: rgba(0,0,0,0.3); padding: 2px 5px; border-radius: 4px; transition: background 0.3s;}
+        
+        .page-time.updated { background: #ff9800; color: #fff; font-weight: bold; }
+
+        /* LRU 指標 (Victim Pointer) */
+        .lru-pointer {
+            position: absolute;
+            bottom: -50px;
+            left: 35px; /* 會動態改變 */
+            color: #f44336;
+            font-size: 24px;
+            font-weight: bold;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transition: left 0.5s ease-in-out, opacity 0.3s;
+            opacity: 0;
+        }
+        .pointer-text { font-size: 14px; margin-top: 2px; text-align: center; line-height: 1.2;}
+
+        /* 狀態標籤 */
+        .status-badge {
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 16px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .status-fault { background-color: #f44336; color: white; }
+        .status-hit { background-color: #4caf50; color: white; }
+
+        .desc-box {
+            width: 100%;
+            max-width: 810px;
+            background-color: #252526;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 5px solid #9c27b0;
+            font-size: 17px;
+            line-height: 1.6;
+            min-height: 90px;
+        }
+
+        .controls { margin-top: 25px; display: flex; gap: 15px; }
+        code { background: #000; padding: 2px 6px; border-radius: 4px; color: #ffeb3b; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1 id="title">LRU 頁面替換演算法 (局部性實踐)</h1>
+        <button onclick="toggleLang()" id="langBtn">Switch to English</button>
+    </div>
+
+    <div class="animation-container">
+        <div class="system-clock" id="sys-clock">Time (t) = 0</div>
+
+        <div style="margin-bottom: 5px; color: #aaa; font-size: 14px;" id="lbl-ref">參考字串 (Reference String)</div>
+        <div class="ref-string-container" id="ref-string">
+            <div class="ref-box" id="ref-0">A</div>
+            <div class="ref-box" id="ref-1">B</div>
+            <div class="ref-box" id="ref-2">C</div>
+            <div class="ref-box" id="ref-3">A</div>
+            <div class="ref-box" id="ref-4">D</div>
+            <div class="ref-box" id="ref-5">C</div>
+        </div>
+
+        <div style="margin-bottom: 10px; color: #4caf50; font-weight: bold;" id="lbl-ram">實體記憶體 (附帶時間戳記)</div>
+        <div class="ram-container">
+            <div class="frame">
+                <div class="page" id="frame-0">
+                    <div class="page-id" id="pid-0"></div>
+                    <div class="page-time" id="ptime-0"></div>
+                </div>
+            </div>
+            <div class="frame">
+                <div class="page" id="frame-1">
+                    <div class="page-id" id="pid-1"></div>
+                    <div class="page-time" id="ptime-1"></div>
+                </div>
+            </div>
+            <div class="frame">
+                <div class="page" id="frame-2">
+                    <div class="page-id" id="pid-2"></div>
+                    <div class="page-time" id="ptime-2"></div>
+                </div>
+            </div>
+            
+            <div class="lru-pointer" id="lru-ptr">
+                ▲
+                <div class="pointer-text" id="lbl-victim">LRU<br>(最久未用)</div>
+            </div>
+        </div>
+
+        <div class="status-badge" id="status-badge">Page Fault</div>
+    </div>
+
+    <div class="desc-box" id="description">
+        請點擊「下一步」開始演繹 LRU 頁面替換演算法。
+    </div>
+
+    <div class="controls">
+        <button onclick="prevStep()" id="prevBtn" disabled>上一步</button>
+        <button onclick="nextStep()" id="nextBtn">下一步</button>
+    </div>
+
+    <script>
+        let currentLang = 'zh';
+        let currentStep = 0;
+        const totalSteps = 6;
+
+        // UI 節點
+        const pages = [document.getElementById('frame-0'), document.getElementById('frame-1'), document.getElementById('frame-2')];
+        const pids = [document.getElementById('pid-0'), document.getElementById('pid-1'), document.getElementById('pid-2')];
+        const ptimes = [document.getElementById('ptime-0'), document.getElementById('ptime-1'), document.getElementById('ptime-2')];
+        const ptr = document.getElementById('lru-ptr');
+        const statusBadge = document.getElementById('status-badge');
+        const clockUI = document.getElementById('sys-clock');
+
+        // 定義每一步的狀態
+        // frames: [{id, t}]
+        // updatedIdx: 記錄哪一個 frame 的時間戳記在該步驟被更新了 (用於 UI 高亮)
+        const timeline = [
+            { t: 0, ref: -1, frames: [null, null, null], lruIdx: -1, status: '', updatedIdx: -1,
+              zh: "<strong>初始狀態：</strong>記憶體有 3 個空頁框。我們引入了<strong>系統時鐘 (Time)</strong>，每次存取記憶體，時間就會加 1，並記錄在分頁的時間戳記上。", 
+              en: "<strong>Initial State:</strong> 3 empty frames. We introduce a <strong>System Clock (Time)</strong>. Every access increments time by 1, updating the page's timestamp." },
+            
+            { t: 1, ref: 0, frames: [{id:'A', t:1}, null, null], lruIdx: 0, status: 'fault', updatedIdx: 0,
+              zh: "<strong>步驟 1 (t=1)：</strong>CPU 請求 <code>A</code>。發生缺頁錯誤。A 載入並記錄時間戳記 <code>t=1</code>。目前 A 是唯一也是最久未用的頁面。", 
+              en: "<strong>Step 1 (t=1):</strong> CPU requests <code>A</code>. Page Fault. A is loaded with timestamp <code>t=1</code>. A is currently the only (and thus least recently used) page." },
+            
+            { t: 2, ref: 1, frames: [{id:'A', t:1}, {id:'B', t:2}, null], lruIdx: 0, status: 'fault', updatedIdx: 1,
+              zh: "<strong>步驟 2 (t=2)：</strong>CPU 請求 <code>B</code>。發生缺頁，B 記錄 <code>t=2</code>。比對時間，A 的 <code>t=1</code> 比較舊，所以 LRU 指標留在 A。", 
+              en: "<strong>Step 2 (t=2):</strong> CPU requests <code>B</code>. Page Fault. B gets <code>t=2</code>. Comparing times, A's <code>t=1</code> is older, so the LRU pointer stays on A." },
+            
+            { t: 3, ref: 2, frames: [{id:'A', t:1}, {id:'B', t:2}, {id:'C', t:3}], lruIdx: 0, status: 'fault', updatedIdx: 2,
+              zh: "<strong>步驟 3 (t=3)：</strong>CPU 請求 <code>C</code>。C 載入，記錄 <code>t=3</code>。記憶體全滿！A(t=1) 依然是閒置最久的頁面。", 
+              en: "<strong>Step 3 (t=3):</strong> CPU requests <code>C</code>. C loaded with <code>t=3</code>. Memory FULL! A(t=1) is still the least recently used page." },
+            
+            { t: 4, ref: 3, frames: [{id:'A', t:4}, {id:'B', t:2}, {id:'C', t:3}], lruIdx: 1, status: 'hit', updatedIdx: 0,
+              zh: "<strong>步驟 4 (t=4)：關鍵差異！</strong>CPU 再次請求 <code>A</code>。發生 <strong>Page Hit</strong>！A 的時間戳記被<strong>更新為最新的 <code>t=4</code></strong>。因此，現在最久沒被用到的變成了 <code>B (t=2)</code>，指標跳轉到 B！", 
+              en: "<strong>Step 4 (t=4): CRUCIAL DIFFERENCE!</strong> CPU requests <code>A</code> again. <strong>Page Hit!</strong> A's timestamp is <strong>updated to <code>t=4</code></strong>. Now, the oldest unused page is <code>B (t=2)</code>. Pointer jumps to B!" },
+            
+            { t: 5, ref: 4, frames: [{id:'A', t:4}, {id:'D', t:5}, {id:'C', t:3}], lruIdx: 2, status: 'fault', updatedIdx: 1,
+              zh: "<strong>步驟 5 (t=5)：</strong>CPU 請求 <code>D</code>。記憶體已滿，觸發替換！指標指向 B，所以 <strong>B 被踢出，替換成 D(t=5)</strong>。此時最舊的是 <code>C (t=3)</code>，指標移至 C。", 
+              en: "<strong>Step 5 (t=5):</strong> CPU requests <code>D</code>. Memory full! Pointer indicates B, so <strong>B is evicted and replaced by D(t=5)</strong>. The oldest is now <code>C (t=3)</code>, pointer moves to C." },
+            
+            { t: 6, ref: 5, frames: [{id:'A', t:4}, {id:'D', t:5}, {id:'C', t:6}], lruIdx: 0, status: 'hit', updatedIdx: 2,
+              zh: "<strong>步驟 6 (t=6)：</strong>CPU 請求 <code>C</code>。發生 <strong>Page Hit</strong>！C 的時間戳記更新為 <code>t=6</code>。再次比對，最舊的變成了 <code>A (t=4)</code>，指標跳轉回 A。", 
+              en: "<strong>Step 6 (t=6):</strong> CPU requests <code>C</code>. <strong>Page Hit!</strong> C's timestamp updates to <code>t=6</code>. Comparing again, the oldest is now <code>A (t=4)</code>. Pointer jumps back to A." }
+        ];
+
+        const i18n = {
+            zh: {
+                title: "LRU 頁面替換演算法 (局部性實踐)",
+                langBtn: "Switch to English",
+                prevBtn: "上一步",
+                nextBtn: "下一步",
+                lblRef: "參考字串 (Reference String)",
+                lblRam: "實體記憶體 (附帶時間戳記)",
+                lblVictim: "LRU<br>(最久未用)",
+                statusHit: "命中 (Page Hit)",
+                statusFault: "缺頁 (Page Fault)"
+            },
+            en: {
+                title: "LRU Page Replacement Algorithm",
+                langBtn: "切換至中文",
+                prevBtn: "Previous",
+                nextBtn: "Next",
+                lblRef: "Reference String",
+                lblRam: "Physical Memory (With Timestamps)",
+                lblVictim: "LRU<br>(Oldest)",
+                statusHit: "Page Hit",
+                statusFault: "Page Fault"
+            }
+        };
+
+        function updateUI() {
+            document.getElementById('title').innerText = i18n[currentLang].title;
+            document.getElementById('langBtn').innerText = i18n[currentLang].langBtn;
+            document.getElementById('prevBtn').innerText = i18n[currentLang].prevBtn;
+            document.getElementById('nextBtn').innerText = i18n[currentLang].nextBtn;
+            document.getElementById('lbl-ref').innerText = i18n[currentLang].lblRef;
+            document.getElementById('lbl-ram').innerText = i18n[currentLang].lblRam;
+            document.getElementById('lbl-victim').innerHTML = i18n[currentLang].lblVictim;
+            
+            const state = timeline[currentStep];
+            document.getElementById('description').innerHTML = currentLang === 'zh' ? state.zh : state.en;
+            clockUI.innerText = "Time (t) = " + state.t;
+
+            document.getElementById('prevBtn').disabled = currentStep === 0;
+            document.getElementById('nextBtn').disabled = currentStep === totalSteps;
+
+            // 更新參考字串高亮
+            for(let i=0; i<6; i++) {
+                const box = document.getElementById('ref-' + i);
+                if(i === state.ref) box.classList.add('active');
+                else box.classList.remove('active');
+            }
+
+            // 更新記憶體內容
+            for(let i=0; i<3; i++) {
+                const pageNode = pages[i];
+                const frameData = state.frames[i];
+                const timeNode = ptimes[i];
+                
+                timeNode.classList.remove('updated');
+
+                if(frameData) {
+                    pids[i].innerText = frameData.id;
+                    timeNode.innerText = "t=" + frameData.t;
+                    pageNode.classList.add('visible');
+                    
+                    // 高亮被更新的頁面 (Hit 或 Fault 載入)
+                    if(i === state.updatedIdx) {
+                        timeNode.classList.add('updated');
+                        if(state.status === 'fault' && timeline[currentStep-1] && timeline[currentStep-1].frames[i]?.id !== frameData.id) {
+                            // Replacement Fault color
+                            pageNode.style.background = 'linear-gradient(135deg, #9c27b0, #6a1b9a)';
+                            setTimeout(() => { pageNode.style.background = 'linear-gradient(135deg, #2196f3, #1565c0)'; }, 600);
+                        } else if (state.status === 'hit') {
+                            // Hit color pulse
+                            pageNode.style.transform = 'scale(1.1)';
+                            setTimeout(() => { pageNode.style.transform = 'translateY(0) scale(1)'; }, 400);
+                        }
+                    }
+                } else {
+                    pageNode.classList.remove('visible');
+                }
+            }
+
+            // 更新 LRU 指標位置 (每個 frame 寬度包含 gap 約為 90+25 = 115)
+            if(state.lruIdx !== -1) {
+                ptr.style.opacity = 1;
+                ptr.style.left = (35 + state.lruIdx * 115) + 'px';
+            } else {
+                ptr.style.opacity = 0;
+            }
+
+            // 更新狀態提示標籤
+            if(state.status === 'hit') {
+                statusBadge.innerText = i18n[currentLang].statusHit;
+                statusBadge.className = 'status-badge status-hit';
+                statusBadge.style.opacity = 1;
+            } else if (state.status === 'fault') {
+                statusBadge.innerText = i18n[currentLang].statusFault;
+                statusBadge.className = 'status-badge status-fault';
+                statusBadge.style.opacity = 1;
+            } else {
+                statusBadge.style.opacity = 0;
+            }
+        }
+
+        function toggleLang() {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            updateUI();
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps) {
+                currentStep++;
+                updateUI();
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 0) {
+                currentStep--;
+                updateUI();
+            }
+        }
+
+        // 初始載入
+        updateUI();
+    </script>
+</body>
+</html>

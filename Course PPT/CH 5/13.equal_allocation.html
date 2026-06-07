@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Equal Allocation Animation</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 850px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        h1 { margin: 0; font-size: 24px; color: #4db8ff; }
+        
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background-color: #007acc;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            transition: background 0.2s, transform 0.1s;
+        }
+        button:hover { background-color: #005999; }
+        button:active { transform: scale(0.97); }
+        button:disabled { background-color: #444; color: #888; cursor: not-allowed; }
+
+        .animation-container {
+            width: 850px;
+            height: 450px;
+            background-color: #1e1e1e;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+            border: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+            position: relative;
+        }
+
+        /* 資訊面板 */
+        .info-panel {
+            display: flex;
+            justify-content: space-between;
+            width: 90%;
+            margin-bottom: 20px;
+        }
+        .app-info {
+            width: 30%;
+            background: #2d2d2d;
+            border: 2px solid #555;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            position: relative;
+        }
+        .app-a { border-color: #4caf50; }
+        .app-b { border-color: #2196f3; }
+        .app-c { border-color: #9c27b0; }
+        
+        .app-name { font-size: 18px; font-weight: bold; margin-bottom: 5px; }
+        .app-size { font-size: 14px; color: #aaa; }
+        .alert-badge {
+            position: absolute; top: -15px; right: -15px; background: #f44336; color: white; padding: 5px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; opacity: 0; transition: opacity 0.3s;
+        }
+
+        /* 實體記憶體 RAM */
+        .ram-container {
+            width: 90%;
+            border: 2px dashed #777;
+            border-radius: 8px;
+            padding: 20px;
+            background: rgba(255,255,255,0.02);
+            position: relative;
+        }
+        .ram-title {
+            position: absolute; top: -12px; left: 20px; background: #1e1e1e; padding: 0 10px; color: #aaa; font-weight: bold;
+        }
+        
+        .frames-grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 8px;
+        }
+        .frame {
+            height: 60px;
+            background: #252526;
+            border: 1px solid #444;
+            border-radius: 6px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 16px;
+            font-weight: bold;
+            color: transparent;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* 狀態分配 CSS */
+        /* Group A */
+        .frame.g-a { border-color: #4caf50; }
+        .frame.g-a.used { background: linear-gradient(135deg, #4caf50, #2e7d32); color: white; }
+        .frame.g-a.wasted { background: repeating-linear-gradient(45deg, #2d2d2d, #2d2d2d 10px, #4caf50 10px, #4caf50 20px); opacity: 0.6; color: #fff;}
+        
+        /* Group B */
+        .frame.g-b { border-color: #2196f3; }
+        .frame.g-b.used { background: linear-gradient(135deg, #2196f3, #1565c0); color: white; }
+        .frame.g-b.wasted { background: repeating-linear-gradient(45deg, #2d2d2d, #2d2d2d 10px, #2196f3 10px, #2196f3 20px); opacity: 0.6; color: #fff;}
+        
+        /* Group C */
+        .frame.g-c { border-color: #9c27b0; }
+        .frame.g-c.used { background: linear-gradient(135deg, #9c27b0, #6a1b9a); color: white; }
+        
+        /* 標籤字樣 */
+        .frame.wasted::after { content: 'Wasted'; font-size: 10px; position: absolute; bottom: 2px; color: #fff; background: rgba(0,0,0,0.6); padding: 2px 4px; border-radius: 4px; }
+        
+        .desc-box {
+            width: 100%;
+            max-width: 810px;
+            background-color: #252526;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 5px solid #ffeb3b;
+            font-size: 17px;
+            line-height: 1.6;
+            min-height: 100px;
+        }
+
+        .controls { margin-top: 25px; display: flex; gap: 15px; }
+        code { background: #000; padding: 2px 6px; border-radius: 4px; color: #ffeb3b; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1 id="title">頁框配置：平均配置 (Equal Allocation)</h1>
+        <button onclick="toggleLang()" id="langBtn">Switch to English</button>
+    </div>
+
+    <div class="animation-container">
+        
+        <div class="info-panel">
+            <div class="app-info app-a">
+                <div class="alert-badge" id="badge-a">浪費 2 頁</div>
+                <div class="app-name" style="color: #4caf50;" id="name-a">App A (小程式)</div>
+                <div class="app-size" id="size-a">需求：2 頁框</div>
+            </div>
+            <div class="app-info app-b">
+                <div class="alert-badge" id="badge-b">浪費 1 頁</div>
+                <div class="app-name" style="color: #2196f3;" id="name-b">App B (中程式)</div>
+                <div class="app-size" id="size-b">需求：3 頁框</div>
+            </div>
+            <div class="app-info app-c">
+                <div class="alert-badge" id="badge-c">缺頁！少 6 頁</div>
+                <div class="app-name" style="color: #9c27b0;" id="name-c">App C (大程式)</div>
+                <div class="app-size" id="size-c">需求：10 頁框</div>
+            </div>
+        </div>
+
+        <div class="ram-container">
+            <div class="ram-title" id="lbl-ram">實體記憶體 (總共 12 個頁框)</div>
+            <div class="frames-grid" id="f-grid">
+                </div>
+        </div>
+
+    </div>
+
+    <div class="desc-box" id="description">
+        請點擊「下一步」開始演繹平均配置的運作過程。
+    </div>
+
+    <div class="controls">
+        <button onclick="prevStep()" id="prevBtn" disabled>上一步</button>
+        <button onclick="nextStep()" id="nextBtn">下一步</button>
+    </div>
+
+    <script>
+        let currentLang = 'zh';
+        let currentStep = 0;
+        const totalSteps = 4;
+        
+        // 建立 12 個 Frames
+        const fGrid = document.getElementById('f-grid');
+        let frames = [];
+        for(let i=0; i<12; i++) {
+            let f = document.createElement('div');
+            f.className = 'frame';
+            fGrid.appendChild(f);
+            frames.push(f);
+        }
+
+        const badgeA = document.getElementById('badge-a');
+        const badgeB = document.getElementById('badge-b');
+        const badgeC = document.getElementById('badge-c');
+
+        const i18n = {
+            zh: {
+                title: "頁框配置：平均配置 (Equal Allocation)",
+                langBtn: "Switch to English",
+                prevBtn: "上一步",
+                nextBtn: "下一步",
+                nameA: "App A (小程式)", sizeA: "需求：2 頁框", badgeAWaste: "浪費 2 頁",
+                nameB: "App B (中程式)", sizeB: "需求：3 頁框", badgeBWaste: "浪費 1 頁",
+                nameC: "App C (大程式)", sizeC: "需求：10 頁框", badgeCFault: "缺頁！少 6 頁",
+                lblRam: "實體記憶體 (總共 12 個頁框)",
+                steps: [
+                    "<strong>初始狀態：</strong>系統總共有 <strong>12 個</strong>實體頁框。目前有 3 個應用程式準備執行，它們的需求大小各自不同。",
+                    "<strong>步驟 1 (計算配額)：</strong>作業系統採用「平均配置」。不看程式大小，直接計算 <code>12 個頁框 / 3 個程式 = 4</code>。作業系統強硬地分配給每個程式 <strong>4 個頁框</strong>的空間。",
+                    "<strong>步驟 2 (資源浪費)：</strong>App A 只需要 2 頁，卻拿到 4 頁，導致 <strong>2 個頁框被閒置浪費</strong>。App B 只需要 3 頁，也<strong>浪費了 1 頁</strong>。這些浪費的空間別人完全無法使用 (類似內部碎裂)。",
+                    "<strong>步驟 3 (效能災難)：</strong>App C 是個需要 10 頁的大傢伙，卻只被分配到 4 頁！它在執行時會不斷找不到需要的資料，導致瘋狂發生<strong>缺頁錯誤 (Page Fault)</strong>，嚴重拖垮系統效能。",
+                    "<strong>總結：</strong>平均配置雖然實作簡單，但「齊頭式平等」反而造成了小程式浪費記憶體、大程式效能崩潰的雙輸局面。這就是為什麼需要「比例配置」的原因。"
+                ]
+            },
+            en: {
+                title: "Frame Allocation: Equal Allocation",
+                langBtn: "切換至中文",
+                prevBtn: "Previous",
+                nextBtn: "Next",
+                nameA: "App A (Small)", sizeA: "Needs: 2 Frames", badgeAWaste: "Wastes 2",
+                nameB: "App B (Medium)", sizeB: "Needs: 3 Frames", badgeBWaste: "Wastes 1",
+                nameC: "App C (Large)", sizeC: "Needs: 10 Frames", badgeCFault: "Fault! Short 6",
+                lblRam: "Physical Memory (12 Frames Total)",
+                steps: [
+                    "<strong>Initial State:</strong> The system has <strong>12</strong> physical frames available. 3 applications are ready to run, each with different memory requirements.",
+                    "<strong>Step 1 (Calculate Share):</strong> The OS uses 'Equal Allocation'. Ignoring app sizes, it calculates <code>12 frames / 3 apps = 4</code>. The OS strictly assigns exactly <strong>4 frames</strong> to each app.",
+                    "<strong>Step 2 (Resource Waste):</strong> App A only needs 2 frames but gets 4, leaving <strong>2 frames completely wasted</strong>. App B needs 3, <strong>wasting 1 frame</strong>. No other app can use this wasted space.",
+                    "<strong>Step 3 (Performance Disaster):</strong> App C needs 10 frames but is only given 4! It won't have enough space to run its working set, causing massive <strong>Page Faults</strong> and crippling system performance.",
+                    "<strong>Summary:</strong> While simple to implement, this 'strict equality' causes a lose-lose situation: memory waste for small apps and performance crashes for large apps. This highlights the need for 'Proportional Allocation'."
+                ]
+            }
+        };
+
+        function resetUI() {
+            frames.forEach(f => {
+                f.className = 'frame';
+                f.innerText = '';
+            });
+            badgeA.style.opacity = 0;
+            badgeB.style.opacity = 0;
+            badgeC.style.opacity = 0;
+        }
+
+        function updateUI() {
+            // 文字切換
+            document.getElementById('title').innerText = i18n[currentLang].title;
+            document.getElementById('langBtn').innerText = i18n[currentLang].langBtn;
+            document.getElementById('prevBtn').innerText = i18n[currentLang].prevBtn;
+            document.getElementById('nextBtn').innerText = i18n[currentLang].nextBtn;
+            
+            document.getElementById('name-a').innerText = i18n[currentLang].nameA;
+            document.getElementById('size-a').innerText = i18n[currentLang].sizeA;
+            badgeA.innerText = i18n[currentLang].badgeAWaste;
+            
+            document.getElementById('name-b').innerText = i18n[currentLang].nameB;
+            document.getElementById('size-b').innerText = i18n[currentLang].sizeB;
+            badgeB.innerText = i18n[currentLang].badgeBWaste;
+
+            document.getElementById('name-c').innerText = i18n[currentLang].nameC;
+            document.getElementById('size-c').innerText = i18n[currentLang].sizeC;
+            badgeC.innerText = i18n[currentLang].badgeCFault;
+
+            document.getElementById('lbl-ram').innerText = i18n[currentLang].lblRam;
+            document.getElementById('description').innerHTML = i18n[currentLang].steps[currentStep];
+
+            document.getElementById('prevBtn').disabled = currentStep === 0;
+            document.getElementById('nextBtn').disabled = currentStep === totalSteps;
+
+            resetUI();
+
+            switch(currentStep) {
+                case 1:
+                    // 分配框線，但不填滿 (表示已劃分領域)
+                    for(let i=0; i<4; i++) { frames[i].classList.add('g-a'); }
+                    for(let i=4; i<8; i++) { frames[i].classList.add('g-b'); }
+                    for(let i=8; i<12; i++) { frames[i].classList.add('g-c'); }
+                    break;
+                case 2:
+                    // 填滿 A, B 並顯示浪費
+                    for(let i=0; i<2; i++) { frames[i].classList.add('g-a', 'used'); frames[i].innerText = 'A'; }
+                    for(let i=2; i<4; i++) { frames[i].classList.add('g-a', 'wasted'); }
+                    badgeA.style.opacity = 1;
+
+                    for(let i=4; i<7; i++) { frames[i].classList.add('g-b', 'used'); frames[i].innerText = 'B'; }
+                    for(let i=7; i<8; i++) { frames[i].classList.add('g-b', 'wasted'); }
+                    badgeB.style.opacity = 1;
+
+                    for(let i=8; i<12; i++) { frames[i].classList.add('g-c'); } // C 還沒畫
+                    break;
+                case 3:
+                case 4:
+                    // 填滿 C 並顯示缺頁警示
+                    for(let i=0; i<2; i++) { frames[i].classList.add('g-a', 'used'); frames[i].innerText = 'A'; }
+                    for(let i=2; i<4; i++) { frames[i].classList.add('g-a', 'wasted'); }
+                    badgeA.style.opacity = 1;
+
+                    for(let i=4; i<7; i++) { frames[i].classList.add('g-b', 'used'); frames[i].innerText = 'B'; }
+                    for(let i=7; i<8; i++) { frames[i].classList.add('g-b', 'wasted'); }
+                    badgeB.style.opacity = 1;
+
+                    for(let i=8; i<12; i++) { frames[i].classList.add('g-c', 'used'); frames[i].innerText = 'C'; }
+                    badgeC.style.opacity = 1;
+                    
+                    // 震動特效暗示 Fault
+                    if(currentStep === 3) {
+                        for(let i=8; i<12; i++) {
+                            frames[i].style.transform = 'translateY(-5px)';
+                            setTimeout(() => { frames[i].style.transform = 'translateY(5px)'; }, 100);
+                            setTimeout(() => { frames[i].style.transform = 'translateY(0)'; }, 200);
+                        }
+                    }
+                    break;
+            }
+        }
+
+        function toggleLang() {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            updateUI();
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps) {
+                currentStep++;
+                updateUI();
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 0) {
+                currentStep--;
+                updateUI();
+            }
+        }
+
+        // 初始載入
+        updateUI();
+    </script>
+</body>
+</html>

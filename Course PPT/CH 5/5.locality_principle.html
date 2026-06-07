@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Locality of Reference Animation</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px;
+            margin: 0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 950px;
+            border-bottom: 2px solid #334155;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        h1 { margin: 0; font-size: 26px; color: #38bdf8; }
+        
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background-color: #0284c7;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            transition: background 0.2s, transform 0.1s;
+        }
+        button:hover { background-color: #0369a1; }
+        button:active { transform: scale(0.97); }
+        button:disabled { background-color: #475569; color: #94a3b8; cursor: not-allowed; }
+
+        .animation-container {
+            position: relative;
+            width: 950px;
+            height: 500px;
+            background-color: #1e293b;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            overflow: hidden;
+            margin-bottom: 25px;
+            border: 1px solid #334155;
+            display: flex;
+        }
+        
+        /* 程式碼區塊 */
+        .code-block {
+            position: absolute;
+            top: 40px;
+            left: 40px;
+            width: 300px;
+            background-color: #0f172a;
+            border: 1px solid #475569;
+            border-radius: 8px;
+            padding: 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 16px;
+            color: #e2e8f0;
+        }
+        .highlight { background-color: rgba(251, 191, 36, 0.3); border-radius: 4px; padding: 2px; transition: background 0.3s;}
+        .highlight-active { background-color: rgba(251, 191, 36, 0.8); color: #000; font-weight: bold;}
+        
+        /* 變數視覺化 */
+        .var-array { position: absolute; top: 220px; left: 40px; display: flex; gap: 5px; }
+        .array-cell { width: 50px; height: 50px; border: 2px solid #38bdf8; display: flex; justify-content: center; align-items: center; border-radius: 6px; background: #0f172a;}
+        .array-cell.active { background: #38bdf8; color: #000; font-weight: bold; transform: scale(1.1); transition: all 0.3s;}
+
+        .var-sum { position: absolute; top: 300px; left: 40px; width: 120px; height: 50px; border: 2px solid #fbbf24; border-radius: 6px; display: flex; justify-content: center; align-items: center; font-weight: bold;}
+        .var-sum.active { background: #fbbf24; color: #000; transform: scale(1.1); transition: all 0.3s;}
+
+        /* 硬體架構區 */
+        .hardware-area { position: absolute; top: 40px; right: 40px; width: 450px; height: 400px; display: flex; justify-content: space-between;}
+        
+        .ram-box, .disk-box { width: 200px; height: 100%; border-radius: 10px; display: flex; flex-direction: column; align-items: center; padding-top: 10px; position: relative;}
+        .ram-box { border: 2px dashed #10b981; background: rgba(16, 185, 129, 0.05); }
+        .disk-box { border: 2px dashed #8b5cf6; background: rgba(139, 92, 246, 0.05); }
+        .box-title { font-weight: bold; margin-bottom: 15px;}
+        .ram-title { color: #34d399; }
+        .disk-title { color: #a78bfa; }
+
+        /* 分頁區塊 (Pages) */
+        .page {
+            width: 160px; height: 80px; border-radius: 8px; margin-bottom: 10px; display: flex; flex-direction: column; justify-content: center; align-items: center; font-size: 14px;
+            transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1); position: absolute;
+        }
+        .page-a { background: linear-gradient(135deg, #0284c7, #0369a1); color: white;}
+        .page-b { background: linear-gradient(135deg, #b45309, #92400e); color: white;}
+        .page-c { background: linear-gradient(135deg, #4d7c0f, #3f6212); color: white;}
+
+        .desc-box {
+            width: 100%;
+            max-width: 910px;
+            background-color: #1e293b;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 6px solid #38bdf8;
+            font-size: 18px;
+            line-height: 1.6;
+            min-height: 120px;
+        }
+
+        .controls { margin-top: 25px; display: flex; gap: 15px; }
+
+        /* 動畫連線 */
+        .signal-dot {
+            position: absolute; width: 15px; height: 15px; background: #fbbf24; border-radius: 50%; box-shadow: 0 0 15px #fbbf24; opacity: 0; z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1 id="title">局部性原則 (Locality of Reference) 演繹</h1>
+        <button onclick="toggleLang()" id="langBtn">Switch to English</button>
+    </div>
+
+    <div class="animation-container">
+        <div class="code-block">
+            int sum = 0;<br>
+            for(int i=0; i<4; i++) {<br>
+            &nbsp;&nbsp;<span id="code-sum" class="highlight">sum</span> += <span id="code-arr" class="highlight">A[i]</span>;<br>
+            }
+        </div>
+
+        <div class="var-array">
+            <div class="array-cell" id="c0">A[0]</div>
+            <div class="array-cell" id="c1">A[1]</div>
+            <div class="array-cell" id="c2">A[2]</div>
+            <div class="array-cell" id="c3">A[3]</div>
+        </div>
+        <div class="var-sum" id="v-sum">sum = 0</div>
+
+        <div class="signal-dot" id="dot"></div>
+
+        <div class="hardware-area">
+            <div class="ram-box">
+                <div class="box-title ram-title" id="lbl-ram">實體記憶體 (RAM)</div>
+                <div class="page page-c" id="pg-c" style="top: 50px;">Page C<br>(OS Kernel)</div>
+            </div>
+            
+            <div class="disk-box">
+                <div class="box-title disk-title" id="lbl-disk">硬碟 (Disk)</div>
+                <div class="page page-a" id="pg-a" style="top: 50px;">Page A<br>(Array A[0~999])</div>
+                <div class="page page-b" id="pg-b" style="top: 150px;">Page B<br>(Variables: sum, i)</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="desc-box" id="description">
+        請點擊「下一步」開始演繹程式執行時的局部性特徵。
+    </div>
+
+    <div class="controls">
+        <button onclick="prevStep()" id="prevBtn" disabled>上一步</button>
+        <button onclick="nextStep()" id="nextBtn">下一步</button>
+    </div>
+
+    <script>
+        let currentLang = 'zh';
+        let currentStep = 0;
+        const totalSteps = 6;
+
+        const pgA = document.getElementById('pg-a');
+        const pgB = document.getElementById('pg-b');
+        const sumBox = document.getElementById('v-sum');
+        const codeSum = document.getElementById('code-sum');
+        const codeArr = document.getElementById('code-arr');
+        const dot = document.getElementById('dot');
+        const cells = [
+            document.getElementById('c0'), document.getElementById('c1'),
+            document.getElementById('c2'), document.getElementById('c3')
+        ];
+
+        const i18n = {
+            zh: {
+                title: "局部性原則 (Locality of Reference) 演繹",
+                langBtn: "Switch to English",
+                prevBtn: "上一步",
+                nextBtn: "下一步",
+                lblRam: "實體記憶體 (RAM)",
+                lblDisk: "硬碟 (Disk)",
+                steps: [
+                    "<strong>初始狀態：</strong>程式準備執行迴圈。目前 <code>Array A</code> 與變數 <code>sum</code> 的資料都還存在硬碟 (Disk) 的分頁中，尚未載入 RAM。",
+                    "<strong>步驟 1 (Page Fault)：</strong>程式存取 <code>sum</code> 與 <code>A[0]</code>。因為資料不在 RAM 中，發生缺頁中斷。作業系統將包含 <code>sum</code> 的 Page B 與包含 <code>A[0]</code> 的 Page A 一併載入 RAM。",
+                    "<strong>步驟 2 (空間局部性 Spatial Locality)：</strong>迴圈進入下一次，讀取 <code>A[1]</code>。因為 <code>A[1]</code> 的實體位址緊鄰 <code>A[0]</code>，它<strong>已經被包含在剛才載入的 Page A 中</strong>了！直接 Page Hit，無需讀取硬碟。",
+                    "<strong>步驟 3 (空間局部性)：</strong>繼續讀取 <code>A[2]</code> 與 <code>A[3]</code>。陣列在記憶體中是連續存放的，這些資料全都在 Page A 裡面。連續的 Page Hit 展現了極高的執行效率。",
+                    "<strong>步驟 4 (時間局部性 Temporal Locality)：</strong>注意變數 <code>sum</code>。它在每一次迴圈中都被反覆存取。因為最近才剛用過，作業系統不會把 Page B 移出 RAM，這確保了後續存取都是瞬間完成 (Page Hit)。",
+                    "<strong>步驟 5 (頁面替換決策)：</strong>當系統記憶體不足，需要執行頁面替換 (如 LRU) 時，由於 Page A 和 Page B 剛才「密集且頻繁」地被使用 (工作集 Working Set)，作業系統會將它們保留，轉而置換掉很久沒用的 Page C。",
+                    "<strong>總結：</strong>正是因為程式具有「愛存取相鄰資料 (空間)」與「愛重複存取同資料 (時間)」的特性，虛擬記憶體的分頁機制才能以極低的 Page Fault 比例高效運作！"
+                ]
+            },
+            en: {
+                title: "Locality of Reference Animation",
+                langBtn: "切換至中文",
+                prevBtn: "Previous",
+                nextBtn: "Next",
+                lblRam: "Physical Memory (RAM)",
+                lblDisk: "Hard Disk (Disk)",
+                steps: [
+                    "<strong>Initial State:</strong> The program is about to run the loop. The data for <code>Array A</code> and variable <code>sum</code> reside in the Disk and are not yet in RAM.",
+                    "<strong>Step 1 (Page Fault):</strong> Program accesses <code>sum</code> and <code>A[0]</code>. Data is missing, causing a Page Fault. OS loads Page B (has <code>sum</code>) and Page A (has <code>A[0]</code>) into RAM.",
+                    "<strong>Step 2 (Spatial Locality):</strong> Next loop iteration reads <code>A[1]</code>. Because <code>A[1]</code> is physically adjacent to <code>A[0]</code>, it is <strong>already inside the loaded Page A</strong>! Page Hit occurs, saving a disk read.",
+                    "<strong>Step 3 (Spatial Locality):</strong> Continues reading <code>A[2]</code> and <code>A[3]</code>. Arrays are contiguous in memory, so they are all in Page A. Continuous Page Hits demonstrate high efficiency.",
+                    "<strong>Step 4 (Temporal Locality):</strong> Notice the variable <code>sum</code>. It is accessed repeatedly in every iteration. Because it was used recently, the OS keeps Page B in RAM, ensuring instant access.",
+                    "<strong>Step 5 (Page Replacement Decision):</strong> If RAM is full and replacement (e.g., LRU) is needed, the OS will keep Page A and Page B because they are in the active 'Working Set'. It will swap out the older Page C instead.",
+                    "<strong>Summary:</strong> Because programs tend to access adjacent data (Spatial) and reuse recent data (Temporal), the virtual memory paging mechanism can operate efficiently with minimal Page Faults!"
+                ]
+            }
+        };
+
+        function resetStyles() {
+            cells.forEach(c => c.classList.remove('active'));
+            sumBox.classList.remove('active');
+            sumBox.innerText = 'sum = 0';
+            codeSum.classList.remove('highlight-active');
+            codeArr.classList.remove('highlight-active');
+            dot.style.opacity = 0;
+            
+            // Reset Pages
+            pgA.style.left = '65px'; pgA.style.top = '50px'; // Inside Disk
+            pgB.style.left = '65px'; pgB.style.top = '150px'; // Inside Disk
+        }
+
+        function triggerSignal(fromX, fromY, toX, toY) {
+            dot.style.transition = 'none';
+            dot.style.left = fromX + 'px';
+            dot.style.top = fromY + 'px';
+            dot.style.opacity = 1;
+            
+            setTimeout(() => {
+                dot.style.transition = 'all 0.5s ease-out';
+                dot.style.left = toX + 'px';
+                dot.style.top = toY + 'px';
+            }, 50);
+            
+            setTimeout(() => { dot.style.opacity = 0; }, 600);
+        }
+
+        function updateUI() {
+            document.getElementById('title').innerText = i18n[currentLang].title;
+            document.getElementById('langBtn').innerText = i18n[currentLang].langBtn;
+            document.getElementById('prevBtn').innerText = i18n[currentLang].prevBtn;
+            document.getElementById('nextBtn').innerText = i18n[currentLang].nextBtn;
+            document.getElementById('lbl-ram').innerText = i18n[currentLang].lblRam;
+            document.getElementById('lbl-disk').innerText = i18n[currentLang].lblDisk;
+            document.getElementById('description').innerHTML = i18n[currentLang].steps[currentStep];
+
+            document.getElementById('prevBtn').disabled = currentStep === 0;
+            document.getElementById('nextBtn').disabled = currentStep === totalSteps;
+
+            resetStyles();
+
+            switch(currentStep) {
+                case 1: // Load Pages (Page Fault)
+                    pgA.style.left = '-260px'; pgA.style.top = '150px'; // Move to RAM
+                    pgB.style.left = '-260px'; pgB.style.top = '250px'; // Move to RAM
+                    setTimeout(() => {
+                        cells[0].classList.add('active');
+                        sumBox.classList.add('active');
+                        sumBox.innerText = 'sum = A[0]';
+                        codeSum.classList.add('highlight-active');
+                        codeArr.classList.add('highlight-active');
+                    }, 800);
+                    break;
+                case 2: // Spatial (A[1])
+                    pgA.style.left = '-260px'; pgA.style.top = '150px';
+                    pgB.style.left = '-260px'; pgB.style.top = '250px';
+                    cells[1].classList.add('active');
+                    codeArr.classList.add('highlight-active');
+                    triggerSignal(120, 240, 680, 190); // Signal from A[1] to RAM Page A
+                    break;
+                case 3: // Spatial (A[2], A[3])
+                    pgA.style.left = '-260px'; pgA.style.top = '150px';
+                    pgB.style.left = '-260px'; pgB.style.top = '250px';
+                    cells[2].classList.add('active');
+                    cells[3].classList.add('active');
+                    codeArr.classList.add('highlight-active');
+                    triggerSignal(200, 240, 680, 190);
+                    break;
+                case 4: // Temporal (sum)
+                    pgA.style.left = '-260px'; pgA.style.top = '150px';
+                    pgB.style.left = '-260px'; pgB.style.top = '250px';
+                    cells[0].classList.add('active'); cells[1].classList.add('active');
+                    cells[2].classList.add('active'); cells[3].classList.add('active');
+                    sumBox.classList.add('active');
+                    sumBox.innerText = 'sum = ALL';
+                    codeSum.classList.add('highlight-active');
+                    triggerSignal(100, 320, 680, 290); // Signal from sum to RAM Page B
+                    break;
+                case 5: // Page Replacement Keep
+                case 6: // Summary
+                    pgA.style.left = '-260px'; pgA.style.top = '150px'; // Kept in RAM
+                    pgB.style.left = '-260px'; pgB.style.top = '250px'; // Kept in RAM
+                    // Page C gets swapped out to disk
+                    const pgC = document.getElementById('pg-c');
+                    pgC.style.transform = 'translateX(325px)'; 
+                    break;
+            }
+
+            if(currentStep < 5) {
+                document.getElementById('pg-c').style.transform = 'none';
+            }
+        }
+
+        function toggleLang() {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            updateUI();
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps) {
+                currentStep++;
+                updateUI();
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 0) {
+                currentStep--;
+                updateUI();
+            }
+        }
+
+        // Initialize
+        updateUI();
+    </script>
+</body>
+</html>

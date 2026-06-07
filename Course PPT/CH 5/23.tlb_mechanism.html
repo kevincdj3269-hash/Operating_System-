@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TLB Performance Mechanism</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 950px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        h1 { margin: 0; font-size: 24px; color: #4db8ff; }
+        
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background-color: #007acc;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+        button:hover { background-color: #005999; }
+        button:disabled { background-color: #444; color: #888; cursor: not-allowed; }
+
+        .animation-container {
+            width: 950px;
+            height: 480px;
+            background-color: #1e1e1e;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+            border: 1px solid #333;
+            position: relative;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        /* 硬體元件樣式 */
+        .hw-node {
+            width: 160px; height: 100px;
+            border-radius: 8px; display: flex; flex-direction: column; justify-content: center; align-items: center;
+            font-weight: bold; font-size: 16px; border: 2px solid #555;
+        }
+        .cpu { background: rgba(244, 67, 54, 0.1); border-color: #f44336; color: #e57373; }
+        .tlb { background: rgba(255, 235, 59, 0.1); border-color: #ffeb3b; color: #ffeb3b; }
+        .ram { background: rgba(76, 175, 80, 0.1); border-color: #4caf50; color: #81c784; }
+
+        .table-view {
+            background: #252526; border: 1px solid #444; border-radius: 6px; padding: 10px; width: 140px;
+            font-family: monospace; font-size: 13px;
+        }
+        .table-row { border-bottom: 1px solid #444; padding: 2px 0; }
+
+        /* 動畫線路 */
+        .path { position: absolute; background: #444; z-index: 1; transition: all 0.5s; }
+        .signal { position: absolute; width: 12px; height: 12px; background: #fff; border-radius: 50%; opacity: 0; z-index: 5; }
+
+        .desc-box {
+            width: 100%;
+            max-width: 910px;
+            background-color: #252526;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 5px solid #007acc;
+            font-size: 17px;
+            line-height: 1.6;
+            min-height: 100px;
+        }
+        .controls { margin-top: 25px; display: flex; gap: 15px; }
+        .highlight { color: #ffeb3b; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1 id="title">TLB 效能優化機制</h1>
+        <button onclick="toggleLang()" id="langBtn">Switch to English</button>
+    </div>
+
+    <div class="animation-container">
+        <div class="hw-node cpu" id="node-cpu">CPU<br>(Req: P1)</div>
+        
+        <div style="display:flex; flex-direction:column; gap:50px;">
+            <div class="hw-node tlb">TLB (快取)<br><div class="table-view" id="tlb-content">Empty</div></div>
+            <div class="hw-node ram">Page Table (RAM)<br><div class="table-view">P1: F5<br>P2: F8</div></div>
+        </div>
+
+        <div class="hw-node ram" id="node-ram" style="height: 150px;">Physical RAM<br>Frame 5: Data</div>
+        <div class="signal" id="dot"></div>
+    </div>
+
+    <div class="desc-box" id="description">
+        請點擊「下一步」開始演繹。
+    </div>
+
+    <div class="controls">
+        <button onclick="prevStep()" id="prevBtn" disabled>上一步</button>
+        <button onclick="nextStep()" id="nextBtn">下一步</button>
+    </div>
+
+    <script>
+        let currentLang = 'zh';
+        let currentStep = 0;
+        const totalSteps = 6;
+
+        const dot = document.getElementById('dot');
+        const tlbContent = document.getElementById('tlb-content');
+
+        const i18n = {
+            zh: {
+                title: "TLB 效能優化機制",
+                langBtn: "Switch to English",
+                prevBtn: "上一步",
+                nextBtn: "下一步",
+                steps: [
+                    "<strong>初始狀態：</strong>CPU 準備請求分頁 P1。TLB 目前是空的，系統必須透過「慢速通道」查詢記憶體中的分頁表。",
+                    "<strong>步驟 1 (TLB Miss)：</strong>硬體查詢 TLB，沒找到 P1。發生 TLB Miss。CPU 被迫轉向 Page Table (RAM) 查詢。",
+                    "<strong>步驟 2 (RAM 查詢)：</strong>系統耗費 100ns 讀取分頁表，得知 P1 對應到 Frame 5。此時，該轉換紀錄會被<strong>寫入 TLB</strong> 以備下次使用。",
+                    "<strong>步驟 3 (TLB 更新完成)：</strong>TLB 現在已經快取了 P1:F5 的紀錄。下次再請求 P1 時，就不需要再讀取 RAM 分頁表了。",
+                    "<strong>步驟 4 (再次請求 P1)：</strong>CPU 再次請求 P1。硬體同步查詢 TLB。",
+                    "<strong>步驟 5 (TLB Hit！)：</strong>TLB 瞬間命中！硬體直接回傳 Frame 5。省去了那次慢速的記憶體查詢，總耗時僅 101ns。速度大幅提升！"
+                ]
+            },
+            en: {
+                title: "TLB Performance Mechanism",
+                langBtn: "切換至中文",
+                prevBtn: "Previous",
+                nextBtn: "Next",
+                steps: [
+                    "<strong>Initial State:</strong> CPU is ready to request P1. TLB is empty, system must use the 'slow path' to query the Page Table in RAM.",
+                    "<strong>Step 1 (TLB Miss):</strong> Hardware checks TLB, P1 not found. TLB Miss! CPU is forced to query the Page Table in RAM.",
+                    "<strong>Step 2 (RAM Query):</strong> System spends 100ns reading the Page Table, finds P1 maps to Frame 5. The mapping is then <strong>written into the TLB</strong> for future use.",
+                    "<strong>Step 3 (TLB Updated):</strong> TLB now caches P1:F5. Next time P1 is requested, there's no need to read the RAM Page Table.",
+                    "<strong>Step 4 (Request P1 Again):</strong> CPU requests P1 again. Hardware checks the TLB.",
+                    "<strong>Step 5 (TLB Hit!):</strong> TLB Hit! Hardware returns Frame 5 instantly. Skipping the slow memory read, total time is only ~101ns. Speed vastly improved!"
+                ]
+            }
+        };
+
+        function animateDot(x, y) {
+            dot.style.transition = 'all 0.5s ease';
+            dot.style.left = x + 'px';
+            dot.style.top = y + 'px';
+            dot.style.opacity = '1';
+        }
+
+        function updateUI() {
+            document.getElementById('title').innerText = i18n[currentLang].title;
+            document.getElementById('langBtn').innerText = i18n[currentLang].langBtn;
+            document.getElementById('prevBtn').innerText = i18n[currentLang].prevBtn;
+            document.getElementById('nextBtn').innerText = i18n[currentLang].nextBtn;
+            document.getElementById('description').innerHTML = i18n[currentLang].steps[currentStep];
+
+            document.getElementById('prevBtn').disabled = currentStep === 0;
+            document.getElementById('nextBtn').disabled = currentStep === totalSteps - 1;
+
+            switch(currentStep) {
+                case 0: tlbContent.innerText = "Empty"; break;
+                case 1: animateDot(200, 250); break;
+                case 2: animateDot(500, 350); tlbContent.innerHTML = "P1: F5"; break;
+                case 3: animateDot(350, 250); break;
+                case 4: animateDot(200, 250); break;
+                case 5: animateDot(350, 250); tlbContent.style.color = '#4caf50'; break;
+            }
+        }
+
+        function toggleLang() {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            updateUI();
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps - 1) { currentStep++; updateUI(); }
+        }
+
+        function prevStep() {
+            if (currentStep > 0) { currentStep--; updateUI(); }
+        }
+
+        updateUI();
+    </script>
+</body>
+</html>

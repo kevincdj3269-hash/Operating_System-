@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Inverted Page Table Animation</title>
+    <style>
+        body { font-family: sans-serif; background: #121212; color: #fff; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { background: #1e1e1e; padding: 20px; border-radius: 10px; border: 1px solid #444; width: 800px; }
+        .controls { margin-top: 20px; }
+        button { padding: 10px 20px; cursor: pointer; }
+        .visual-area { display: flex; justify-content: space-around; margin-top: 30px; height: 300px; }
+        .box { border: 2px solid #555; padding: 10px; border-radius: 5px; width: 200px; text-align: center; }
+        .highlight { border-color: #ff9800; background: rgba(255, 152, 0, 0.2); }
+        .arrow { font-size: 24px; color: #4db8ff; align-self: center; }
+    </style>
+</head>
+<body class="zh">
+    <div class="container">
+        <h1 id="title">反轉分頁表 (Inverted Page Table)</h1>
+        <button onclick="toggleLang()" id="langBtn">Switch to English</button>
+        
+        <div class="visual-area">
+            <div class="box" id="cpu-req">CPU Req:<br>PID 1, Page 5</div>
+            <div class="arrow">→</div>
+            <div class="box" id="hash-box">Hash Function</div>
+            <div class="arrow">→</div>
+            <div class="box" id="ipt-box">Inverted Page Table<br>(Frame 0: PID 2, P3)<br>(Frame 1: PID 1, P5)</div>
+        </div>
+
+        <div id="description" style="margin-top: 20px; height: 60px;"></div>
+        <div class="controls">
+            <button onclick="nextStep()" id="nextBtn">Next</button>
+        </div>
+    </div>
+
+    <script>
+        let step = 0;
+        let lang = 'zh';
+        const steps = [
+            { zh: "CPU 發出請求：尋找 PID 1 的 Page 5。", en: "CPU requests: Finding Page 5 of PID 1." },
+            { zh: "透過雜湊函數 (Hash) 快速計算索引位置。", en: "Hash function maps request to an index." },
+            { zh: "比對反轉分頁表：Frame 1 剛好存放的是 PID 1, Page 5！", en: "Checking IPT: Frame 1 matches PID 1, Page 5!" },
+            { zh: "成功存取實體頁框 Frame 1。", en: "Access to Frame 1 successful." }
+        ];
+
+        function nextStep() {
+            step = (step + 1) % steps.length;
+            document.getElementById('description').innerText = lang === 'zh' ? steps[step].zh : steps[step].en;
+            if(step === 2) document.getElementById('ipt-box').classList.add('highlight');
+            else document.getElementById('ipt-box').classList.remove('highlight');
+        }
+
+        function toggleLang() {
+            lang = lang === 'zh' ? 'en' : 'zh';
+            document.getElementById('title').innerText = lang === 'zh' ? "反轉分頁表" : "Inverted Page Table";
+            document.getElementById('nextBtn').innerText = lang === 'zh' ? "下一步" : "Next";
+            nextStep(); // refresh text
+        }
+    </script>
+</body>
+</html>
